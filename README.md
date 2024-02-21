@@ -1,1 +1,0 @@
-this codebase is full of commented code, inefficient stuff, and a bunch of things i'm not proud of, i've had to do a lot of hacking to make everything work right and even then I only know it WORKS ON MY MACHINE :trollface:

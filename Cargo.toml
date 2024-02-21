@@ -1,32 +1,25 @@
 [package]
 name = "quick-search"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+# bin dependencies
 [dependencies]
-egui_overlay = "0.6.0"
-egui = "0.24.1"
-winit = "0.29.8"
-mexprp = { version = "0.3.1", default-features = false }
-anyhow = "1.0.78"
-clipboard = "0.5.0"
-everything-sys = { git = "https://github.com/Ciantic/everything-sys-rs" }
-widestring = "1.0.2"
-opener = "0.6.1"
-winapi = { version = "0.3.9", features = ["synchapi"] }
-winreg = "0.52.0"
-# windows-sys = { version = "0.52.0", features = ["Win32", "Win32_System", "Win32_System_ApplicationInstallationAndServicing"] }
-minwin = { git ="https://github.com/Jascha-N/minwin-rs" }
-rusty_audio = "1.4.1"
-urlencoding = "2.1.3"
-reqwest = { version = "0.11.23", features = ["blocking", "json"] }
-webbrowser = "0.8.12"
-roxmltree = "0.19.0"
-# webster = "0.3.0"
-serde = { version = "1.0.193", features = ["derive"] }
-# global-hotkey = "0.4.1"
 windows-hotkeys = "0.2.1"
-privilege_level = "0.1.1"
-is_elevated = "0.1.2"
+minwin = { git = "https://github.com/Jascha-N/minwin-rs" }
+directories = "5.0.1"
+lazy_static = "1.4.0"
+quick-search-lib = { path = "../quick-search-lib" }
+log = "0.4.20"
+env_logger = "0.11.2"
+serde = { version = "1.0.197", features = ["derive"] }
+toml = "0.8.10"
+ctrlc = "3.4.2"
+rusty_audio = "1.4.1"
+include-flate = "0.3.0"
+egui_overlay = "0.7.0"
+egui = "0.25.0"
+winapi = { version = "0.3.9", features = ["synchapi"] }
+anyhow = "1.0.80"
