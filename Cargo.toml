@@ -7,11 +7,11 @@ edition = "2021"
 
 # bin dependencies
 [dependencies]
+quick-search-lib = { git = "https://github.com/quick-search-rs/quick-search-lib" }
 windows-hotkeys = "0.2.1"
 minwin = { git = "https://github.com/Jascha-N/minwin-rs" }
 directories = "5.0.1"
 lazy_static = "1.4.0"
-quick-search-lib = { path = "../quick-search-lib" }
 log = "0.4.20"
 env_logger = "0.11.2"
 serde = { version = "1.0.197", features = ["derive"] }
