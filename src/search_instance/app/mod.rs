@@ -280,7 +280,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                         }
                     }
 
-                    if egui_context.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                    if egui_context.input(|i| i.key_pressed(egui::Key::ArrowDown)) || (egui_context.input(|i| i.scroll_delta.y < 0.0) && self.scrolling) {
                         log::trace!("arrow down pressed!");
 
                         if self.doubledown {
@@ -303,7 +303,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                         }
                     }
 
-                    if egui_context.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                    if egui_context.input(|i| i.key_pressed(egui::Key::ArrowUp)) || (egui_context.input(|i| i.scroll_delta.y > 0.0) && self.scrolling) {
                         log::trace!("arrow up pressed!");
 
                         if self.doubleup {
@@ -382,6 +382,8 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     egui_context.used_size().x
                 });
 
+            let mut set_cursor_later = None;
+
             egui::Window::new("Results")
                 .title_bar(false)
                 // .fixed_pos(Pos2::new(midwindowx as f32, midwindowy as f32))
@@ -448,7 +450,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                                 ui.add(egui::Label::new(source.pretty_name.clone()).wrap(false));
                                 ui.separator();
                             }
-                            NiceIter::Result { result, cursor_on } => {
+                            NiceIter::Result { result, cursor_on, index } => {
                                 let (short_title, title_truncated) = {
                                     let mut title = result.title().to_string();
                                     let mut truncated = false;
@@ -499,8 +501,13 @@ impl egui_overlay::EguiOverlay for App<'_> {
                                                 }
                                             });
                                     }
-                                } else {
+                                } else if self.scrolling {
                                     ui.add(egui::Label::new(short_title).wrap(false));
+                                } else {
+                                    // i dont like inlining if statements if there are side effects
+                                    if ui.add_enabled(true, egui::Button::new(short_title).wrap(false)).clicked() {
+                                        set_cursor_later = Some(index);
+                                    }
                                 };
                             }
                         }
@@ -508,6 +515,10 @@ impl egui_overlay::EguiOverlay for App<'_> {
 
                     egui_context.used_size().x
                 });
+            if let Some(index) = set_cursor_later {
+                self.results.raw_set_cursor(index);
+                self.scrolling = true;
+            }
         }
 
         let newpassthru = egui_context.wants_pointer_input();

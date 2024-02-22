@@ -56,6 +56,10 @@ impl ResultHolder {
         self.cursor = 0;
     }
 
+    pub fn raw_set_cursor(&mut self, cursor: usize) {
+        self.cursor = cursor;
+    }
+
     pub fn len(&self) -> usize {
         self.results.iter().map(|g| g.results.len()).sum()
     }
@@ -174,6 +178,7 @@ impl ResultHolder {
                         Some(NiceIter::Result {
                             result,
                             cursor_on: { self.cursor == i },
+                            index: i,
                             // metadata: group.clone(),
                         })
                     } else {
@@ -183,6 +188,7 @@ impl ResultHolder {
                     Some(NiceIter::Result {
                         result,
                         cursor_on: false,
+                        index: i,
                         // metadata: group.clone(),
                     })
                 } else {
@@ -233,6 +239,7 @@ pub enum NiceIter<'a> {
     Result {
         result: &'a SearchResult,
         cursor_on: bool,
+        index: usize,
         // metadata: Rc<SearchMetadata>,
     },
 }
