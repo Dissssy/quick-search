@@ -505,7 +505,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                                     ui.add(egui::Label::new(short_title).wrap(false));
                                 } else {
                                     // i dont like inlining if statements if there are side effects
-                                    if ui.add_enabled(true, egui::Button::new(short_title).wrap(false)).clicked() {
+                                    if ui.add_enabled(true, egui::Button::new(short_title).wrap(false).frame(false)).clicked() {
                                         set_cursor_later = Some(index);
                                     }
                                 };
