@@ -80,6 +80,8 @@ pub struct Config {
     pub truncate_context_length: usize,
     pub truncate_title_length: usize,
     pub appearance_delay: usize,
+    pub entries_around_cursor: usize,
+    pub group_entries_while_unselected: usize,
 }
 
 fn ordered_map<S, K: Ord + Serialize, V: Serialize>(value: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
@@ -190,6 +192,10 @@ struct PossibleConfig {
     truncate_title_length: Option<usize>,
     #[serde(default)]
     appearance_delay: Option<usize>,
+    #[serde(default)]
+    entries_around_cursor: Option<usize>,
+    #[serde(default)]
+    group_entries_while_unselected: Option<usize>,
 }
 
 impl From<PossibleConfig> for Config {
@@ -200,6 +206,8 @@ impl From<PossibleConfig> for Config {
             truncate_context_length: config.truncate_context_length.unwrap_or(100),
             truncate_title_length: config.truncate_title_length.unwrap_or(100),
             appearance_delay: config.appearance_delay.unwrap_or(250),
+            entries_around_cursor: config.entries_around_cursor.unwrap_or(2),
+            group_entries_while_unselected: config.group_entries_while_unselected.unwrap_or(3),
         }
     }
 }

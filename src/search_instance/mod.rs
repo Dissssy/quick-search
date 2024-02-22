@@ -191,14 +191,19 @@ impl Plugin {
         let p = self._p.clone();
         let query = query.to_string();
 
-        let metadata = SearchMetadata {
+        let mut metadata = SearchMetadata {
             pretty_name: self.colored_name.clone(),
             priority: self.priority,
             raw_name: self.name.to_string(),
             id: self.id.clone(),
+            num_results: 0,
         };
 
-        std::thread::spawn(move || (p.search(query.into()).into(), metadata))
+        std::thread::spawn(move || {
+            let res: Vec<quick_search_lib::SearchResult> = p.search(query.into()).into();
+            metadata.num_results = res.len();
+            (res, metadata)
+        })
     }
 }
 
@@ -234,4 +239,5 @@ pub struct SearchMetadata {
     pub priority: u32,
     pub raw_name: String,
     pub id: quick_search_lib::PluginId,
+    pub num_results: usize,
 }

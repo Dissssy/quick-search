@@ -146,7 +146,7 @@ impl ResultHolder {
         None
     }
 
-    pub fn iter_nice(&self, selected: bool) -> impl Iterator<Item = NiceIter> {
+    pub fn iter_nice(&self, selected: bool, around: usize, unselected: usize) -> impl Iterator<Item = NiceIter> {
         // iterate over all groups
         // yield a NewSource every time the source changes
         // yield the first 3 results from each group UNLESS we are selected AND the cursor is in that group, then yield the 7 results centered around the cursor (from the self.cursor_range() function)
@@ -174,7 +174,7 @@ impl ResultHolder {
             .enumerate()
             .flat_map(move |(i, (y, (result, group)))| {
                 let res = if selected {
-                    if self.cursor_range().contains(&i) {
+                    if self.cursor_range(around).contains(&i) {
                         Some(NiceIter::Result {
                             result,
                             cursor_on: { self.cursor == i },
@@ -184,7 +184,7 @@ impl ResultHolder {
                     } else {
                         None
                     }
-                } else if y < 3 {
+                } else if (unselected == 0) || (y < unselected) {
                     Some(NiceIter::Result {
                         result,
                         cursor_on: false,
@@ -208,9 +208,9 @@ impl ResultHolder {
                 }
             })
     }
-    fn cursor_range(&self) -> std::ops::Range<usize> {
-        let mut start = self.cursor.saturating_sub(2);
-        let mut end = self.cursor.saturating_add(3);
+    fn cursor_range(&self, around: usize) -> std::ops::Range<usize> {
+        let mut start = self.cursor.saturating_sub(around);
+        let mut end = self.cursor.saturating_add(around + 1);
         let mut range = start..end;
         let mut last_source = "".to_owned();
         for (x, (_y, g)) in self.results.iter().flat_map(|g| g.results.iter().map(|_| g.metadata.clone()).enumerate()).enumerate() {

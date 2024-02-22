@@ -196,41 +196,48 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
                 .show(egui_context, |ui| {
-                    ui.checkbox(&mut self.config_lock.get_mut().audio_enabled, "Sound effects")
-                        .on_hover_text("Enable or disable sound effects when the search bar is opened");
                     ui.add(egui::Slider::new(&mut self.config_lock.get_mut().truncate_title_length, 25..=250).text("Truncate title length"))
                         .on_hover_text("Set the maximum length of the title text for a search result");
                     ui.add(egui::Slider::new(&mut self.config_lock.get_mut().truncate_context_length, 25..=250).text("Truncate context length"))
                         .on_hover_text("Set the maximum length of the context text for a search result");
                     ui.add(egui::Slider::new(&mut self.config_lock.get_mut().appearance_delay, 0..=1000).text("Appearance delay"))
                         .on_hover_text("Set the delay in ms before the search bar appears after the hotkey is pressed, lower values may cause flickering on some systems.");
-                    if let Some(ref mut autolaunchinfo) = self.autolaunchinfo {
-                        ui.horizontal(|ui| {
-                            if ui
-                                .checkbox(&mut autolaunchinfo.enabled, "Run on startup")
-                                .on_hover_text("Enable or disable running QuickSearch on startup")
-                                .changed()
-                            {
-                                if autolaunchinfo.enabled {
-                                    if let Err(e) = autolaunchinfo.autolaunch.enable() {
-                                        let error = format!("failed to enable autolaunch: {}", e);
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().entries_around_cursor, 0..=7).text("Entries around cursor"))
+                        .on_hover_text("Set the number of entries around the cursor to display while scrolling. e.g. if set to 2, 5 entries centered around the cursor will be displayed.");
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().group_entries_while_unselected, 0..=10).text("Entries while unselected"))
+                        .on_hover_text("Set the number of entries to display from each group while the search bar is not selected. set to 0 to display all entries.");
+
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut self.config_lock.get_mut().audio_enabled, "Sound effects")
+                            .on_hover_text("Enable or disable sound effects when the search bar is opened");
+                        if let Some(ref mut autolaunchinfo) = self.autolaunchinfo {
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .checkbox(&mut autolaunchinfo.enabled, "Run on startup")
+                                    .on_hover_text("Enable or disable running QuickSearch on startup")
+                                    .changed()
+                                {
+                                    if autolaunchinfo.enabled {
+                                        if let Err(e) = autolaunchinfo.autolaunch.enable() {
+                                            let error = format!("failed to enable autolaunch: {}", e);
+                                            log::error!("{}", error);
+                                            autolaunchinfo.error = Some(error);
+                                            autolaunchinfo.enabled = false;
+                                        };
+                                    } else if let Err(e) = autolaunchinfo.autolaunch.disable() {
+                                        let error = format!("failed to disable autolaunch: {}", e);
                                         log::error!("{}", error);
-                                        autolaunchinfo.error = Some(error);
-                                        autolaunchinfo.enabled = false;
-                                    };
-                                } else if let Err(e) = autolaunchinfo.autolaunch.disable() {
-                                    let error = format!("failed to disable autolaunch: {}", e);
-                                    log::error!("{}", error);
-                                    autolaunchinfo.enabled = true;
+                                        autolaunchinfo.enabled = true;
+                                    }
                                 }
-                            }
-                            if let Some(error) = &autolaunchinfo.error {
-                                ui.label(RichText::new(error).color(Color32::RED));
-                            }
-                        });
-                    } else {
-                        ui.label("AutoLaunch not available, run QuickSearch from the correct location to enable it.");
-                    }
+                                if let Some(error) = &autolaunchinfo.error {
+                                    ui.label(RichText::new(error).color(Color32::RED));
+                                }
+                            });
+                        } else {
+                            ui.label("AutoLaunch not available, run QuickSearch from the correct location to enable it.");
+                        }
+                    });
                     ui.separator();
 
                     if self.states.is_empty() || self.no_plugins_including_missing {

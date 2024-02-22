@@ -444,10 +444,17 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     //     };
                     // }
 
-                    for e in self.results.iter_nice(self.scrolling) {
+                    for e in self
+                        .results
+                        .iter_nice(self.scrolling, self.config_lock.get().entries_around_cursor, self.config_lock.get().group_entries_while_unselected)
+                    {
                         match e {
                             NiceIter::NewSource(source) => {
-                                ui.add(egui::Label::new(source.pretty_name.clone()).wrap(false));
+                                ui.horizontal(|ui| {
+                                    ui.add(egui::Label::new(source.pretty_name.clone()).wrap(false));
+                                    ui.separator();
+                                    ui.add(egui::Label::new(format!("{} Results", source.num_results)).wrap(false));
+                                });
                                 ui.separator();
                             }
                             NiceIter::Result { result, cursor_on, index } => {
