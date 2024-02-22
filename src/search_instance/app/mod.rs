@@ -3,11 +3,11 @@ use quick_search_lib::SearchResult;
 mod holder;
 use self::holder::NiceIter;
 
-use super::{Plugin, SearchMetadata};
+use super::{PluginLoadResult, SearchMetadata};
 use holder::ResultHolder;
 
 pub struct App {
-    plugins: Vec<Plugin>,
+    loadresults: PluginLoadResult,
     audio: Option<rusty_audio::Audio>,
     size: Option<egui::Vec2>,
     positioned: bool,
@@ -33,12 +33,12 @@ pub struct App {
     time: std::time::Instant,
 }
 
-impl Default for App {
-    fn default() -> Self {
+impl App {
+    pub fn new(loadresults: PluginLoadResult) -> Self {
         Self {
-            plugins: Vec::default(),
-            audio: Option::default(),
-            size: Option::default(),
+            loadresults,
+            audio: None,
+            size: None,
             positioned: bool::default(),
             input: String::default(),
             selected: bool::default(),
@@ -54,12 +54,6 @@ impl Default for App {
             passthrough: bool::default(),
             time: std::time::Instant::now(),
         }
-    }
-}
-
-impl App {
-    pub fn new(plugins: Vec<Plugin>) -> Self {
-        Self { plugins, ..Default::default() }
     }
     pub fn set_audio(&mut self, audio: rusty_audio::Audio) {
         self.audio = Some(audio);
@@ -100,7 +94,7 @@ impl App {
             // let input = self.input.clone();
             // self.joinhandle = Some(std::thread::spawn(move || App::search(searches, input)));
 
-            for search in &self.plugins {
+            for search in &self.loadresults.plugins {
                 let input = self.input.to_lowercase();
                 self.joinhandles.push(search.search_delayed(&input));
             }
@@ -358,7 +352,7 @@ impl egui_overlay::EguiOverlay for App {
                             // if enter was pressed while scrolling, we should use the selected result and close the window
                             // get result at index and call action
                             if let Some((result, plugin_id)) = self.results.get_from_cursor() {
-                                for plugin in &self.plugins {
+                                for plugin in &self.loadresults.plugins {
                                     if plugin.id == plugin_id {
                                         plugin.execute(result);
                                     }

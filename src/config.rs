@@ -134,8 +134,22 @@ impl Config {
     // pub fn get_plugin_mut(&mut self, name: &str) -> &mut PluginConfig {
     //     self.plugin_states.entry(name.to_string()).or_insert(PluginConfig { enabled: true, priority: 0 })
     // }
-    pub fn get_plugin(&self, name: &str) -> &PluginConfig {
-        self.plugin_states.get(name).unwrap_or(&PluginConfig { enabled: true, priority: 0 })
+    // pub fn get_plugin(&mut self, name: &str) -> Option<&PluginConfig> {
+    //     self.plugin_states.get(name)
+    // }
+    // pub fn get_or_default_plugin(&mut self, name: &str, default_config: quick_search_lib::Config) -> &PluginConfig {
+    //     self.plugin_states.entry(name.to_string()).or_insert(PluginConfig {
+    //         enabled: true,
+    //         priority: 0,
+    //         plugin_config: default_config,
+    //     })
+    // }
+    pub fn get_mut_or_default_plugin(&mut self, name: &str, default_config: quick_search_lib::Config) -> &mut PluginConfig {
+        self.plugin_states.entry(name.to_string()).or_insert(PluginConfig {
+            enabled: true,
+            priority: 0,
+            plugin_config: default_config,
+        })
     }
     pub fn save(&self) {
         let file = super::DIRECTORY.config_dir().join("config.toml");
@@ -162,8 +176,9 @@ impl Config {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug, PartialEq)]
 pub struct PluginConfig {
     pub enabled: bool,
     pub priority: u32,
+    pub plugin_config: quick_search_lib::Config,
 }

@@ -2,11 +2,16 @@ use std::collections::HashMap;
 
 use egui::{Color32, Label, RichText};
 use egui_extras::{Column, TableBuilder};
+use quick_search_lib::abi_stable::traits::IntoReprRust;
 
 use crate::config::{ConfigLock, PluginConfig};
 
+use super::PluginLoadResult;
+
 pub struct App<'a> {
     config_lock: ConfigLock<'a>,
+    loadresults: PluginLoadResult,
+    no_plugins_including_missing: bool,
     audio_enabled: bool,
     states: Vec<(String, PluginConfig)>,
     size: Option<egui::Vec2>,
@@ -15,6 +20,8 @@ pub struct App<'a> {
     force_redraw_now: bool,
     close_at_end: CloseState,
     time: std::time::Instant,
+
+    menu_open_for: Option<usize>,
     // autolaunch: auto_launch::AutoLaunch,
     // auto: bool,
     // auto_error: Option<String>,
@@ -29,9 +36,9 @@ pub enum CloseState {
 }
 
 impl App<'_> {
-    pub fn new() -> Self {
+    pub fn new(loadresults: PluginLoadResult) -> Self {
         let config_lock = crate::CONFIG_FILE.lock();
-        let mut states: Vec<(String, PluginConfig)> = config_lock.get().plugin_states.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        let mut states: Vec<(String, PluginConfig)> = config_lock.get().plugin_states.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         // sort:
         // put enabled plugins first, disabled plugins come after
         // within each group, sort by priority
@@ -69,7 +76,9 @@ impl App<'_> {
         };
 
         Self {
+            no_plugins_including_missing: states.iter().filter(|(name, _)| !loadresults.missing.contains(name)).count() == 0,
             audio_enabled: config_lock.get().audio_enabled,
+            loadresults,
             states,
             config_lock,
             size: None,
@@ -78,6 +87,7 @@ impl App<'_> {
             force_redraw_now: false,
             close_at_end: CloseState::DoNothing,
             time: std::time::Instant::now(),
+            menu_open_for: None,
             // auto: autolaunch.is_enabled().expect("failed to check autolaunch"),
             // autolaunch,
             // auto_error: None,
@@ -218,8 +228,8 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                         ui.label("AutoLaunch not available, run QuickSearch from the correct location to enable it.");
                     }
                     ui.separator();
-                    // todo: plugin state configs
-                    if self.states.is_empty() {
+
+                    if self.states.is_empty() || self.no_plugins_including_missing {
                         ui.label("No plugins found");
                     } else {
                         // for (name, state) in self.states.iter_mut() {
@@ -246,18 +256,88 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                                 });
                             })
                             .body(|mut body| {
-                                for (name, state) in self.states.iter_mut() {
-                                    body.row(20.0, |mut row| {
-                                        row.col(|ui| {
-                                            ui.add(Label::new(&*name).wrap(false));
-                                        });
-                                        row.col(|ui| {
-                                            ui.checkbox(&mut state.enabled, "");
-                                        });
-                                        row.col(|ui| {
-                                            ui.add(egui::Slider::new(&mut state.priority, 0..=128));
-                                        });
-                                    })
+                                for (i, (name, state)) in self.states.iter_mut().enumerate() {
+                                    if !self.loadresults.missing.contains(name) {
+                                        body.row(20.0, |mut row| {
+                                            row.col(|ui| {
+                                                if !state.plugin_config.empty() {
+                                                    if self.menu_open_for == Some(i) {
+                                                        if ui
+                                                            .button(RichText::new(&*name).italics().color(Color32::LIGHT_GREEN))
+                                                            .on_hover_cursor(egui::CursorIcon::Alias)
+                                                            .on_hover_text("Plugin has extra configurations")
+                                                            .clicked()
+                                                        {
+                                                            log::trace!("Close menu for {}", i);
+                                                            self.menu_open_for = None;
+                                                        }
+
+                                                        // todo: window for plugin config
+                                                        egui::Window::new("Config")
+                                                            .title_bar(false)
+                                                            // .fixed_pos(Pos2::new(midwindowx as f32 - 200., midwindowy as f32 - 30.))
+                                                            // .fixed_size(Vec2::new(400., 60.))
+                                                            .resizable(false)
+                                                            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
+                                                            .show(egui_context, |ui| {
+                                                                for (k, v) in state.plugin_config.iter_mut() {
+                                                                    ui.horizontal(|ui| {
+                                                                        ui.label(k.as_str());
+                                                                        match v {
+                                                                            quick_search_lib::EntryType::Bool { ref mut value } => {
+                                                                                ui.checkbox(value, "");
+                                                                            }
+                                                                            quick_search_lib::EntryType::Int { ref mut value, min, max } => match (min.into_rust(), max.into_rust()) {
+                                                                                (Some(min), Some(max)) => {
+                                                                                    ui.add(egui::Slider::new(value, min..=max));
+                                                                                }
+                                                                                _ => {
+                                                                                    ui.label("no range provided, refer to the documentation for this plugin and configure it manually in the config file.");
+                                                                                }
+                                                                            },
+                                                                            quick_search_lib::EntryType::Float { ref mut value, min, max } => match (min.into_rust(), max.into_rust()) {
+                                                                                (Some(min), Some(max)) => {
+                                                                                    ui.add(egui::Slider::new(value, min..=max));
+                                                                                }
+                                                                                _ => {
+                                                                                    ui.label("no range provided, refer to the documentation for this plugin and configure it manually in the config file.");
+                                                                                }
+                                                                            },
+                                                                            _ => {
+                                                                                ui.label("not implemented, refer to the documentation for this plugin and configure it manually in the config file.");
+                                                                            }
+                                                                        }
+                                                                    });
+                                                                    ui.separator();
+                                                                }
+                                                                if ui.button("Close").clicked() {
+                                                                    self.menu_open_for = None;
+                                                                }
+                                                            });
+                                                    } else {
+                                                        // dummy comment
+                                                        if ui
+                                                            .button(RichText::new(&*name).color(Color32::GREEN))
+                                                            .on_hover_cursor(egui::CursorIcon::Alias)
+                                                            .on_hover_text("Plugin has extra configurations")
+                                                            .clicked()
+                                                        {
+                                                            log::trace!("Open menu for {}", i);
+                                                            self.menu_open_for = Some(i);
+                                                        }
+                                                    }
+                                                } else {
+                                                    ui.add(Label::new(&*name).wrap(false));
+                                                }
+                                            });
+                                            row.col(|ui| {
+                                                ui.checkbox(&mut state.enabled, "");
+                                            });
+                                            row.col(|ui| {
+                                                ui.add(egui::Slider::new(&mut state.priority, 0..=128));
+                                            });
+                                        })
+                                    }
                                 }
                             });
                     }
@@ -269,6 +349,23 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                         ui.spacing();
                         if ui.button(RichText::new("Save").color(Color32::GREEN)).clicked() {
                             self.close_at_end = CloseState::CloseSave;
+                        }
+                        if !self.loadresults.errors.is_empty() {
+                            ui.spacing();
+                            ui.label(RichText::new("Errors found while loading plugins").color(Color32::RED)).on_hover_ui(|ui| {
+                                ui.vertical(|ui| {
+                                    for (i, (path, error)) in self.loadresults.errors.iter().enumerate() {
+                                        if i != 0 {
+                                            ui.separator();
+                                        }
+                                        ui.horizontal(|ui| {
+                                            ui.label(RichText::new(path).color(Color32::RED));
+                                            ui.separator();
+                                            ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+                                        });
+                                    }
+                                });
+                            });
                         }
                     })
                 });

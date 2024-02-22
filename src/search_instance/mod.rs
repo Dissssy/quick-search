@@ -18,7 +18,7 @@ pub fn instance(search_bar: bool) {
         }
         egui_overlay::start(app);
     } else {
-        let app = config::App::new();
+        let app = config::App::new(plugins);
         egui_overlay::start(app);
     }
 }
@@ -27,10 +27,19 @@ pub fn preload() {
     let _ = load_plugins();
 }
 
-fn load_plugins() -> Vec<Plugin> {
+pub struct PluginLoadResult {
+    pub plugins: Vec<Plugin>,
+    // first string is the plugin path, second string is the error message
+    pub errors: Vec<(String, String)>,
+    pub missing: Vec<String>,
+}
+
+fn load_plugins() -> PluginLoadResult {
     let dir = super::DIRECTORY.data_dir().join("plugins");
     log::trace!("plugins directory: {:?}", dir);
     let mut plugins = Vec::new();
+    let mut errors = Vec::new();
+    let mut missing = Vec::new();
     log::trace!("loading plugins");
 
     let files = match std::fs::read_dir(&dir) {
@@ -41,18 +50,19 @@ fn load_plugins() -> Vec<Plugin> {
         }
         Err(e) => {
             log::error!("Failed to read plugins directory: {}", e);
-            return plugins;
+            errors.push((dir.to_string_lossy().into(), format!("Failed to read plugins directory: {}", e)));
+            return PluginLoadResult { plugins, errors, missing };
         }
     };
 
     let mut cl = super::CONFIG_FILE.lock();
 
-    let mut to_remove = Vec::new();
+    // let mut to_remove = Vec::new();
     let mut taken_names = HashSet::new();
     let mut found_names = HashSet::new();
 
     {
-        let config = cl.get();
+        let config = cl.get_mut();
         for entry in files {
             match entry {
                 Ok(entry) => {
@@ -68,7 +78,7 @@ fn load_plugins() -> Vec<Plugin> {
                             match quick_search_lib::load_library(path.as_path()) {
                                 Ok(library) => {
                                     log::trace!("library loaded");
-                                    let plogon = library.get_searchable()(quick_search_lib::PluginId {
+                                    let mut plogon = library.get_searchable()(quick_search_lib::PluginId {
                                         filename: file_name.into_owned().into(),
                                     });
                                     log::trace!("searchable loaded");
@@ -77,21 +87,50 @@ fn load_plugins() -> Vec<Plugin> {
                                     log::trace!("name: {}", name);
                                     if taken_names.contains(name) {
                                         log::error!("plugin name {} is already taken", name);
+                                        errors.push((path.to_string_lossy().into(), format!("plugin name `{}` is already taken", name)));
                                         continue;
                                     }
-                                    if !config.get_plugin(name).enabled {
+                                    let default_plugin_config = Searchable_TO::get_config_entries(&plogon);
+                                    let plugin_info = config.get_mut_or_default_plugin(name, default_plugin_config.clone());
+                                    if !plugin_info.enabled {
                                         log::info!("plugin {} is disabled", name);
                                         continue;
                                     }
                                     taken_names.insert(name);
                                     let colored_name = Searchable_TO::colored_name(&plogon);
                                     log::trace!("colored_name: {:?}", colored_name);
-                                    let priority = config.get_plugin(name).priority;
                                     let id = Searchable_TO::plugin_id(&plogon);
+
+                                    // do plugin config checking here
+                                    for (key, value) in default_plugin_config.iter() {
+                                        // we want to ensure that the plugin config contains the correct keys and that the enum variant of the value is the same, but NOT the contained value
+                                        if plugin_info.plugin_config.get(key.as_str()).is_none() {
+                                            log::warn!("plugin {} is missing config key {}", name, key);
+                                            plugin_info.plugin_config.insert(key.clone(), value.clone());
+                                        } else if plugin_info.plugin_config.get(key.as_str()).map(|v| v.variant()) != Some(value.variant()) {
+                                            log::warn!("plugin {} has incorrect config key {}", name, key);
+                                            plugin_info.plugin_config.insert(key.clone(), value.clone());
+                                        }
+                                    }
+
+                                    // now that we've done all the validation, let's do some key trimming
+                                    let mut to_remove = Vec::new();
+                                    for (key, _) in plugin_info.plugin_config.iter() {
+                                        if default_plugin_config.get(key.as_str()).is_none() {
+                                            to_remove.push(key.clone());
+                                        }
+                                    }
+                                    for key in to_remove {
+                                        plugin_info.plugin_config.remove(&key);
+                                    }
+
+                                    // and finally, send a clone of the plugin config back to the plugin
+                                    Searchable_TO::lazy_load_config(&mut plogon, plugin_info.plugin_config.clone());
+
                                     plugins.push(Plugin {
                                         name,
                                         colored_name: colored_char_to_layout_job(colored_name.into()),
-                                        priority,
+                                        priority: plugin_info.priority,
                                         id: id.clone(),
                                         // path,
                                         _p: plogon,
@@ -101,36 +140,46 @@ fn load_plugins() -> Vec<Plugin> {
                                 }
                                 Err(e) => {
                                     log::error!("Failed to load library: {}", e);
+                                    errors.push((path.to_string_lossy().into(), "Library was compiled for a different version of the ABI".into()));
                                 }
                             }
                         } else {
                             eprintln!("not a library: {:?}", file_name);
+                            errors.push((path.to_string_lossy().into(), "not a library".into()));
                         }
                     } else {
                         log::error!("Entry has no file name");
+                        errors.push((path.to_string_lossy().into(), "Entry has no file name".into()));
                     }
                 }
                 Err(e) => {
                     log::error!("Failed to read entry: {}", e);
+                    errors.push((dir.to_string_lossy().into(), "Failed to read file".into()));
                 }
             }
         }
-        for (name, _) in config.plugin_states.iter() {
+        // for (name, _) in config.plugin_states.iter() {
+        //     if !found_names.contains(name.as_str()) {
+        //         to_remove.push(name.clone());
+        //     }
+        // }
+
+        for name in config.plugin_states.keys() {
             if !found_names.contains(name.as_str()) {
-                to_remove.push(name.clone());
+                missing.push(name.clone());
             }
         }
     }
 
-    for name in to_remove {
-        cl.get_mut().plugin_states.remove(&name);
-    }
+    // for name in to_remove {
+    //     cl.get_mut().plugin_states.remove(&name);
+    // }
 
     log::info!("found and loaded {} plugins", plugins.len());
-    plugins
+    PluginLoadResult { plugins, errors, missing }
 }
 
-struct Plugin {
+pub struct Plugin {
     name: &'static str,
     colored_name: egui::text::LayoutJob,
     priority: u32,
