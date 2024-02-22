@@ -15,11 +15,21 @@ lazy_static = "1.4.0"
 log = "0.4.20"
 env_logger = "0.11.2"
 serde = { version = "1.0.197", features = ["derive"] }
-toml = "0.8.10"
+toml = { version = "0.8.10", features = ["preserve_order"] }
 ctrlc = "3.4.2"
 rusty_audio = "1.4.1"
 include-flate = "0.3.0"
 egui_overlay = "0.7.0"
 egui = "0.25.0"
+egui_extras = "0.25.0"
 winapi = { version = "0.3.9", features = ["synchapi"] }
 anyhow = "1.0.80"
+crossbeam = "0.8.4"
+# tray-icon = "0.11.3"
+image = "0.24.8"
+tray-item = { git = "https://github.com/davehorner/tray-item-rs" }
+rfd = "0.14.0"
+auto-launch = "0.5.0"
+
+[build-dependencies]
+embed-resource = "2.4.1"

@@ -1,29 +1,30 @@
 mod app;
+mod config;
 use std::{collections::HashSet, thread::JoinHandle};
 
 use quick_search_lib::{ColoredChar, Searchable_TO};
 
-pub fn instance() {
+pub fn instance(search_bar: bool) {
     let plugins = load_plugins();
 
-    let config = match super::CONFIG_FILE.lock() {
-        Ok(config) => {
-            log::trace!("config locked");
-            config
+    if search_bar {
+        let cl = super::CONFIG_FILE.lock();
+        let config = cl.get();
+        let mut app = app::App::new(plugins);
+        if config.audio_enabled {
+            let mut audio = rusty_audio::Audio::new();
+            audio.add("notif", crate::AUDIO_FILE_PATH.clone());
+            app.set_audio(audio);
         }
-        Err(e) => {
-            log::error!("Failed to lock config: {}", e);
-            return;
-        }
-    };
-
-    let mut app = app::App::new(plugins);
-    if config.audio_enabled {
-        let mut audio = rusty_audio::Audio::new();
-        audio.add("notif", crate::AUDIO_FILE_PATH.clone());
-        app.set_audio(audio);
+        egui_overlay::start(app);
+    } else {
+        let app = config::App::new();
+        egui_overlay::start(app);
     }
-    egui_overlay::start(app);
+}
+
+pub fn preload() {
+    let _ = load_plugins();
 }
 
 fn load_plugins() -> Vec<Plugin> {
@@ -44,93 +45,85 @@ fn load_plugins() -> Vec<Plugin> {
         }
     };
 
-    let mut config = match super::CONFIG_FILE.lock() {
-        Ok(config) => {
-            log::trace!("config locked");
-            config
-        }
-        Err(e) => {
-            log::error!("Failed to lock config: {}", e);
-            return plugins;
-        }
-    };
+    let mut cl = super::CONFIG_FILE.lock();
 
+    let mut to_remove = Vec::new();
     let mut taken_names = HashSet::new();
     let mut found_names = HashSet::new();
 
-    for entry in files {
-        match entry {
-            Ok(entry) => {
-                let path = entry.path();
-                log::trace!("entry: {:?}", path);
-                // check if file name ends with .dll, .so, or .dylib
-                if let Some(file_name) = path.file_name() {
-                    let file_name = file_name.to_string_lossy();
-                    log::trace!("file name: {:?}", file_name);
-                    if file_name.ends_with(".dll") || file_name.ends_with(".so") || file_name.ends_with(".dylib") {
-                        log::trace!("plugin is a library");
+    {
+        let config = cl.get();
+        for entry in files {
+            match entry {
+                Ok(entry) => {
+                    let path = entry.path();
+                    log::trace!("entry: {:?}", path);
+                    // check if file name ends with .dll, .so, or .dylib
+                    if let Some(file_name) = path.file_name() {
+                        let file_name = file_name.to_string_lossy();
+                        log::trace!("file name: {:?}", file_name);
+                        if file_name.ends_with(".dll") || file_name.ends_with(".so") || file_name.ends_with(".dylib") {
+                            log::trace!("plugin is a library");
 
-                        match quick_search_lib::load_library(path.as_path()) {
-                            Ok(library) => {
-                                log::trace!("library loaded");
-                                let plogon = library.get_searchable()(quick_search_lib::PluginId {
-                                    filename: file_name.into_owned().into(),
-                                });
-                                log::trace!("searchable loaded");
-                                let name: &'static str = Searchable_TO::name(&plogon).into();
-                                found_names.insert(name);
-                                log::trace!("name: {}", name);
-                                if taken_names.contains(name) {
-                                    log::error!("plugin name {} is already taken", name);
-                                    continue;
+                            match quick_search_lib::load_library(path.as_path()) {
+                                Ok(library) => {
+                                    log::trace!("library loaded");
+                                    let plogon = library.get_searchable()(quick_search_lib::PluginId {
+                                        filename: file_name.into_owned().into(),
+                                    });
+                                    log::trace!("searchable loaded");
+                                    let name: &'static str = Searchable_TO::name(&plogon).into();
+                                    found_names.insert(name);
+                                    log::trace!("name: {}", name);
+                                    if taken_names.contains(name) {
+                                        log::error!("plugin name {} is already taken", name);
+                                        continue;
+                                    }
+                                    if !config.get_plugin(name).enabled {
+                                        log::info!("plugin {} is disabled", name);
+                                        continue;
+                                    }
+                                    taken_names.insert(name);
+                                    let colored_name = Searchable_TO::colored_name(&plogon);
+                                    log::trace!("colored_name: {:?}", colored_name);
+                                    let priority = config.get_plugin(name).priority;
+                                    let id = Searchable_TO::plugin_id(&plogon);
+                                    plugins.push(Plugin {
+                                        name,
+                                        colored_name: colored_char_to_layout_job(colored_name.into()),
+                                        priority,
+                                        id: id.clone(),
+                                        // path,
+                                        _p: plogon,
+                                        _l: library,
+                                    });
+                                    log::trace!("plugin added to list");
                                 }
-                                if !config.get_plugin(name).enabled {
-                                    log::info!("plugin {} is disabled", name);
-                                    continue;
+                                Err(e) => {
+                                    log::error!("Failed to load library: {}", e);
                                 }
-                                taken_names.insert(name);
-                                let colored_name = Searchable_TO::colored_name(&plogon);
-                                log::trace!("colored_name: {:?}", colored_name);
-                                let priority = config.get_plugin(name).priority;
-                                let id = Searchable_TO::plugin_id(&plogon);
-                                plugins.push(Plugin {
-                                    name,
-                                    colored_name: colored_char_to_layout_job(colored_name.into()),
-                                    priority,
-                                    id: id.clone(),
-                                    // path,
-                                    _p: plogon,
-                                    _l: library,
-                                });
-                                log::trace!("plugin added to list");
                             }
-                            Err(e) => {
-                                log::error!("Failed to load library: {}", e);
-                            }
+                        } else {
+                            eprintln!("not a library: {:?}", file_name);
                         }
                     } else {
-                        eprintln!("not a library: {:?}", file_name);
+                        log::error!("Entry has no file name");
                     }
-                } else {
-                    log::error!("Entry has no file name");
+                }
+                Err(e) => {
+                    log::error!("Failed to read entry: {}", e);
                 }
             }
-            Err(e) => {
-                log::error!("Failed to read entry: {}", e);
-            }
         }
-    }
-
-    // remove the config entry if the plugin is no longer present
-    let mut to_remove = Vec::new();
-    for (name, _) in config.plugin_states.iter() {
-        if !found_names.contains(name.as_str()) {
-            to_remove.push(name.clone());
+        for (name, _) in config.plugin_states.iter() {
+            if !found_names.contains(name.as_str()) {
+                to_remove.push(name.clone());
+            }
         }
     }
 
     for name in to_remove {
-        config.plugin_states.remove(&name);
+        cl.get_mut().plugin_states.remove(&name);
     }
 
     log::info!("found and loaded {} plugins", plugins.len());
