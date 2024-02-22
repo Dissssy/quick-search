@@ -277,8 +277,8 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                                                         }
 
                                                         // todo: window for plugin config
-                                                        egui::Window::new("Plugin Config")
-                                                            .title_bar(false)
+                                                        egui::Window::new(format!("{} extra configurations", name))
+                                                            .title_bar(true).collapsible(false)
                                                             // .fixed_pos(Pos2::new(midwindowx as f32 - 200., midwindowy as f32 - 30.))
                                                             // .fixed_size(Vec2::new(400., 60.))
                                                             .resizable(false)
