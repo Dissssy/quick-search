@@ -1,6 +1,6 @@
 use std::{collections::HashMap, str::FromStr};
 
-use egui::{Color32, Label, RichText};
+use egui::{Button, Color32, Label, RichText};
 use egui_extras::{Column, TableBuilder};
 use quick_search_lib::abi_stable::{std_types::RString, traits::IntoReprRust};
 
@@ -263,7 +263,7 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                                                 if !state.plugin_config.empty() {
                                                     if self.menu_open_for == Some(i) {
                                                         if ui
-                                                            .button(RichText::new(&*name).italics().color(Color32::LIGHT_GREEN))
+                                                            .add(Button::new(RichText::new(&*name).italics().color(Color32::LIGHT_GREEN)).wrap(false))
                                                             .on_hover_cursor(egui::CursorIcon::Alias)
                                                             .on_hover_text("Plugin has extra configurations")
                                                             .clicked()
@@ -328,7 +328,7 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                                                     } else {
                                                         // dummy comment
                                                         if ui
-                                                            .button(RichText::new(&*name).color(Color32::GREEN))
+                                                            .add(Button::new(RichText::new(&*name).color(Color32::GREEN)).wrap(false))
                                                             .on_hover_cursor(egui::CursorIcon::Alias)
                                                             .on_hover_text("Plugin has extra configurations")
                                                             .clicked()
