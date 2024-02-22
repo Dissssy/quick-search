@@ -179,10 +179,10 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                 }
             }
 
-            // let (_midwindowx, midwindowy) = {
-            //     let (x, y) = glfw_backend.window.get_size();
-            //     (x / 2, y / 2)
-            // };
+            let (midwindowx, midwindowy) = {
+                let (x, y) = glfw_backend.window.get_size();
+                (x / 2, y / 2)
+            };
 
             egui_context.set_visuals({
                 let mut visuals = egui::Visuals::dark();
@@ -273,12 +273,14 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                                                         }
 
                                                         // todo: window for plugin config
-                                                        egui::Window::new("Config")
+                                                        egui::Window::new("Plugin Config")
                                                             .title_bar(false)
                                                             // .fixed_pos(Pos2::new(midwindowx as f32 - 200., midwindowy as f32 - 30.))
                                                             // .fixed_size(Vec2::new(400., 60.))
                                                             .resizable(false)
-                                                            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
+                                                            // .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
+                                                            .pivot(egui::Align2::CENTER_CENTER)
+                                                            .default_pos(egui::Pos2::new(midwindowx as f32, midwindowy as f32))
                                                             .show(egui_context, |ui| {
                                                                 for (k, v) in state.plugin_config.iter_mut() {
                                                                     ui.horizontal(|ui| {
