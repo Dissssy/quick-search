@@ -12,7 +12,6 @@ pub struct App<'a> {
     config_lock: ConfigLock<'a>,
     loadresults: PluginLoadResult,
     no_plugins_including_missing: bool,
-    audio_enabled: bool,
     states: Vec<(String, PluginConfig)>,
     size: Option<egui::Vec2>,
     positioned: bool,
@@ -77,7 +76,6 @@ impl App<'_> {
 
         Self {
             no_plugins_including_missing: states.iter().filter(|(name, _)| !loadresults.missing.contains(name)).count() == 0,
-            audio_enabled: config_lock.get().audio_enabled,
             loadresults,
             states,
             config_lock,
@@ -170,7 +168,7 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                     }
                 }
             });
-        } else if self.time.elapsed().as_millis() > crate::DELAY_TUNING {
+        } else if self.time.elapsed().as_millis() > self.config_lock.get().appearance_delay as u128 {
             if let Some(size) = self.size {
                 if !self.positioned {
                     glfw_backend.window.set_pos(0, 0);
@@ -198,8 +196,14 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
                 .show(egui_context, |ui| {
-                    ui.checkbox(&mut self.audio_enabled, "Sound effects")
+                    ui.checkbox(&mut self.config_lock.get_mut().audio_enabled, "Sound effects")
                         .on_hover_text("Enable or disable sound effects when the search bar is opened");
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().truncate_title_length, 25..=250).text("Truncate title length"))
+                        .on_hover_text("Set the maximum length of the title text for a search result");
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().truncate_context_length, 25..=250).text("Truncate context length"))
+                        .on_hover_text("Set the maximum length of the context text for a search result");
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().appearance_delay, 0..=1000).text("Appearance delay"))
+                        .on_hover_text("Set the delay in ms before the search bar appears after the hotkey is pressed, lower values may cause flickering on some systems.");
                     if let Some(ref mut autolaunchinfo) = self.autolaunchinfo {
                         ui.horizontal(|ui| {
                             if ui
@@ -407,7 +411,6 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                 glfw_backend.window.set_should_close(true);
             }
             CloseState::CloseSave => {
-                self.config_lock.get_mut().audio_enabled = self.audio_enabled;
                 self.config_lock.get_mut().plugin_states = self.states.clone().into_iter().collect::<HashMap<String, PluginConfig>>();
                 // config_lock.get_mut() trips a flag within the config_lock that makes it save the config file
                 glfw_backend.window.set_should_close(true);

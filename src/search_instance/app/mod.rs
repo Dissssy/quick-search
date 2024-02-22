@@ -1,12 +1,16 @@
 use egui::RichText;
 use quick_search_lib::SearchResult;
 mod holder;
+use crate::config::ConfigLock;
+
 use self::holder::NiceIter;
 
 use super::{PluginLoadResult, SearchMetadata};
 use holder::ResultHolder;
 
-pub struct App {
+pub struct App<'a> {
+    config_lock: ConfigLock<'a>,
+
     loadresults: PluginLoadResult,
     audio: Option<rusty_audio::Audio>,
     size: Option<egui::Vec2>,
@@ -33,11 +37,19 @@ pub struct App {
     time: std::time::Instant,
 }
 
-impl App {
+impl App<'_> {
     pub fn new(loadresults: PluginLoadResult) -> Self {
+        let config_lock = crate::CONFIG_FILE.lock();
         Self {
             loadresults,
-            audio: None,
+            audio: if config_lock.get().audio_enabled {
+                let mut audio = rusty_audio::Audio::new();
+                audio.add("notif", crate::AUDIO_FILE_PATH.clone());
+                Some(audio)
+            } else {
+                None
+            },
+            config_lock,
             size: None,
             positioned: bool::default(),
             input: String::default(),
@@ -54,9 +66,6 @@ impl App {
             passthrough: bool::default(),
             time: std::time::Instant::now(),
         }
-    }
-    pub fn set_audio(&mut self, audio: rusty_audio::Audio) {
-        self.audio = Some(audio);
     }
     pub fn try_dispatch_search(&mut self) -> anyhow::Result<()> {
         // check old handles
@@ -139,7 +148,7 @@ impl App {
     }
 }
 
-impl egui_overlay::EguiOverlay for App {
+impl egui_overlay::EguiOverlay for App<'_> {
     fn gui_run(
         &mut self,
         egui_context: &egui::Context,
@@ -207,7 +216,7 @@ impl egui_overlay::EguiOverlay for App {
                     }
                 }
             });
-        } else if self.time.elapsed().as_millis() > crate::DELAY_TUNING {
+        } else if self.time.elapsed().as_millis() > self.config_lock.get().appearance_delay as u128 {
             if let Some(size) = self.size {
                 if !self.positioned {
                     glfw_backend.window.set_pos(0, 0);
@@ -443,8 +452,8 @@ impl egui_overlay::EguiOverlay for App {
                                 let (short_title, title_truncated) = {
                                     let mut title = result.title().to_string();
                                     let mut truncated = false;
-                                    if title.len() > crate::TRUNCATE_TITLE_LENGTH {
-                                        title.truncate(crate::TRUNCATE_TITLE_LENGTH - 3);
+                                    if title.len() > self.config_lock.get().truncate_title_length {
+                                        title.truncate(self.config_lock.get().truncate_title_length - 3);
                                         title.push_str("...");
                                         truncated = true;
                                     }
@@ -454,8 +463,8 @@ impl egui_overlay::EguiOverlay for App {
                                 let (short_context, context_truncated) = {
                                     let mut context = result.context().to_string();
                                     let mut truncated = false;
-                                    if context.len() > crate::TRUNCATE_CONTEXT_LENGTH {
-                                        context.truncate(crate::TRUNCATE_CONTEXT_LENGTH - 3);
+                                    if context.len() > self.config_lock.get().truncate_context_length {
+                                        context.truncate(self.config_lock.get().truncate_context_length - 3);
                                         context.push_str("...");
                                         truncated = true;
                                     }

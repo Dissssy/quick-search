@@ -8,18 +8,9 @@ pub fn instance(search_bar: bool) {
     let plugins = load_plugins();
 
     if search_bar {
-        let cl = super::CONFIG_FILE.lock();
-        let config = cl.get();
-        let mut app = app::App::new(plugins);
-        if config.audio_enabled {
-            let mut audio = rusty_audio::Audio::new();
-            audio.add("notif", crate::AUDIO_FILE_PATH.clone());
-            app.set_audio(audio);
-        }
-        egui_overlay::start(app);
+        egui_overlay::start(app::App::new(plugins));
     } else {
-        let app = config::App::new(plugins);
-        egui_overlay::start(app);
+        egui_overlay::start(config::App::new(plugins));
     }
 }
 

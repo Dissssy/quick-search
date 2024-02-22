@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 mod config;
 mod search_instance;
@@ -37,9 +37,9 @@ lazy_static::lazy_static! {
     static ref CORRECT_PATH: std::path::PathBuf = get_correct_path();
 }
 
-const DELAY_TUNING: u128 = 250;
-const TRUNCATE_CONTEXT_LENGTH: usize = 100;
-const TRUNCATE_TITLE_LENGTH: usize = 100;
+// const DELAY_TUNING: u128 = 250;
+// const TRUNCATE_CONTEXT_LENGTH: usize = 100;
+// const TRUNCATE_TITLE_LENGTH: usize = 100;
 
 fn main() {
     // setup logging

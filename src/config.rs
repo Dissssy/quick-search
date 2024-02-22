@@ -3,7 +3,7 @@ use std::{
     sync::Mutex,
 };
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 
 pub struct ConfigLoader {
     pub lock: Mutex<()>,
@@ -72,12 +72,14 @@ impl Drop for ConfigLock<'_> {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Serialize)]
 pub struct Config {
     #[serde(serialize_with = "ordered_map")]
     pub plugin_states: HashMap<String, PluginConfig>,
-    #[serde(default = "default_audio_enabled")]
     pub audio_enabled: bool,
+    pub truncate_context_length: usize,
+    pub truncate_title_length: usize,
+    pub appearance_delay: usize,
 }
 
 fn ordered_map<S, K: Ord + Serialize, V: Serialize>(value: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
@@ -86,10 +88,6 @@ where
 {
     let ordered: BTreeMap<_, _> = value.iter().collect();
     ordered.serialize(serializer)
-}
-
-fn default_audio_enabled() -> bool {
-    true
 }
 
 impl Config {
@@ -107,7 +105,7 @@ impl Config {
             }
         };
 
-        let config: Config = match toml::from_str(&config) {
+        let config: PossibleConfig = match toml::from_str(&config) {
             Ok(config) => {
                 log::info!("Parsed config file");
                 config
@@ -122,14 +120,11 @@ impl Config {
                         log::error!("Failed to rename config file: {}", e);
                     }
                 };
-                Config {
-                    plugin_states: HashMap::new(),
-                    audio_enabled: true,
-                }
+                PossibleConfig::default()
             }
         };
 
-        config
+        Config::from(config)
     }
     // pub fn get_plugin_mut(&mut self, name: &str) -> &mut PluginConfig {
     //     self.plugin_states.entry(name.to_string()).or_insert(PluginConfig { enabled: true, priority: 0 })
@@ -181,4 +176,30 @@ pub struct PluginConfig {
     pub enabled: bool,
     pub priority: u32,
     pub plugin_config: quick_search_lib::Config,
+}
+
+#[derive(Deserialize, Default, Clone, Debug, PartialEq)]
+struct PossibleConfig {
+    #[serde(default)]
+    plugin_states: Option<HashMap<String, PluginConfig>>,
+    #[serde(default)]
+    audio_enabled: Option<bool>,
+    #[serde(default)]
+    truncate_context_length: Option<usize>,
+    #[serde(default)]
+    truncate_title_length: Option<usize>,
+    #[serde(default)]
+    appearance_delay: Option<usize>,
+}
+
+impl From<PossibleConfig> for Config {
+    fn from(config: PossibleConfig) -> Self {
+        Config {
+            plugin_states: config.plugin_states.unwrap_or_default(),
+            audio_enabled: config.audio_enabled.unwrap_or(true),
+            truncate_context_length: config.truncate_context_length.unwrap_or(100),
+            truncate_title_length: config.truncate_title_length.unwrap_or(100),
+            appearance_delay: config.appearance_delay.unwrap_or(250),
+        }
+    }
 }
