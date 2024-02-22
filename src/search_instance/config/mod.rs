@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use egui::{Color32, Label, RichText};
 use egui_extras::{Column, TableBuilder};
-use quick_search_lib::abi_stable::traits::IntoReprRust;
+use quick_search_lib::abi_stable::{std_types::RString, traits::IntoReprRust};
 
 use crate::config::{ConfigLock, PluginConfig};
 
@@ -303,6 +303,15 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                                                                                     ui.label("no range provided, refer to the documentation for this plugin and configure it manually in the config file.");
                                                                                 }
                                                                             },
+                                                                            quick_search_lib::EntryType::String { ref mut value } => {
+                                                                                let mut this = value.clone().into_rust();
+                                                                                if ui.text_edit_singleline(&mut this).changed() {
+                                                                                    if let Ok(rstr) = RString::from_str(&this) {
+                                                                                        *value = rstr;
+                                                                                    }
+                                                                                };
+
+                                                                            }
                                                                             _ => {
                                                                                 ui.label("not implemented, refer to the documentation for this plugin and configure it manually in the config file.");
                                                                             }
