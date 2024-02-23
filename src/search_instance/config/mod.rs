@@ -206,6 +206,8 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                         .on_hover_text("Set the number of entries around the cursor to display while scrolling. e.g. if set to 2, 5 entries centered around the cursor will be displayed.");
                     ui.add(egui::Slider::new(&mut self.config_lock.get_mut().group_entries_while_unselected, 0..=10).text("Entries while unselected"))
                         .on_hover_text("Set the number of entries to display from each group while the search bar is not selected. set to 0 to display all entries.");
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().search_delay, 250..=10000).text("Search delay"))
+                        .on_hover_text("Set the debounce time in ms, lower values may run excessive searches, higher values mean a longer delay before the search is run.");
 
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut self.config_lock.get_mut().audio_enabled, "Sound effects")

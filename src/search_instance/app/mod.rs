@@ -271,7 +271,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                         self.doubleup = false;
                     } else if let Some(changed) = self.last_changed {
                         // if it has been x ms since the last change, then dispatch the search and set last_changed to None
-                        if std::time::Instant::now().duration_since(changed).as_millis() >= 300 {
+                        if std::time::Instant::now().duration_since(changed).as_millis() >= self.config_lock.get().search_delay as u128 {
                             log::trace!("input not changed, dispatching search!");
                             if let Err(e) = self.try_dispatch_search() {
                                 log::error!("error: {}", e);
@@ -393,6 +393,9 @@ impl egui_overlay::EguiOverlay for App<'_> {
                 .pivot(egui::Align2::CENTER_TOP)
                 .fixed_pos(egui::Pos2::new(midwindowx as f32, midwindowy as f32 + 30.))
                 .show(egui_context, |ui| {
+                    if !self.joinhandles.is_empty() {
+                        ui.spinner();
+                    }
                     // let mut last_result = None;
                     // for (i, result) in self.results.iter_all().enumerate() {
                     //     let dont_realloc = result.source.name();
