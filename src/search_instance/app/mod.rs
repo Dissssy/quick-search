@@ -395,6 +395,14 @@ impl egui_overlay::EguiOverlay for App<'_> {
                 .show(egui_context, |ui| {
                     if !self.joinhandles.is_empty() {
                         ui.spinner();
+                    } else if self.config_lock.get().show_countdown {
+                        if let Some(changed) = self.last_changed {
+                            let dur_since = std::time::Instant::now().duration_since(changed).as_millis();
+                            let delay = self.config_lock.get().search_delay as u128;
+                            if dur_since < delay {
+                                ui.label(format!("{:.2} seconds until search", delay.saturating_sub(dur_since) as f32 / 1000.));
+                            }
+                        }
                     }
                     // let mut last_result = None;
                     // for (i, result) in self.results.iter_all().enumerate() {

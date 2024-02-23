@@ -212,6 +212,8 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut self.config_lock.get_mut().audio_enabled, "Sound effects")
                             .on_hover_text("Enable or disable sound effects when the search bar is opened");
+                        ui.checkbox(&mut self.config_lock.get_mut().show_countdown, "Show countdown")
+                            .on_hover_text("Enable or disable the countdown until the searches are dispatched");
                         if let Some(ref mut autolaunchinfo) = self.autolaunchinfo {
                             ui.horizontal(|ui| {
                                 if ui

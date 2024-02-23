@@ -83,6 +83,7 @@ pub struct Config {
     pub entries_around_cursor: usize,
     pub group_entries_while_unselected: usize,
     pub search_delay: usize,
+    pub show_countdown: bool,
 }
 
 fn ordered_map<S, K: Ord + Serialize, V: Serialize>(value: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
@@ -199,6 +200,8 @@ struct PossibleConfig {
     group_entries_while_unselected: Option<usize>,
     #[serde(default)]
     search_delay: Option<usize>,
+    #[serde(default)]
+    show_countdown: Option<bool>,
 }
 
 impl From<PossibleConfig> for Config {
@@ -212,6 +215,7 @@ impl From<PossibleConfig> for Config {
             entries_around_cursor: config.entries_around_cursor.unwrap_or(2),
             group_entries_while_unselected: config.group_entries_while_unselected.unwrap_or(3),
             search_delay: config.search_delay.unwrap_or(500),
+            show_countdown: config.show_countdown.unwrap_or(false),
         }
     }
 }
