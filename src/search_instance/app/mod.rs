@@ -280,7 +280,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                         }
                     }
 
-                    if egui_context.input(|i| i.key_pressed(egui::Key::ArrowDown)) || (egui_context.input(|i| i.scroll_delta.y < 0.0) && self.scrolling) {
+                    if egui_context.input(|i| i.key_pressed(egui::Key::ArrowDown)) || (egui_context.input(|i| i.raw_scroll_delta.y < 0.0) && self.scrolling) {
                         log::trace!("arrow down pressed!");
 
                         if self.doubledown {
@@ -303,7 +303,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                         }
                     }
 
-                    if egui_context.input(|i| i.key_pressed(egui::Key::ArrowUp)) || (egui_context.input(|i| i.scroll_delta.y > 0.0) && self.scrolling) {
+                    if egui_context.input(|i| i.key_pressed(egui::Key::ArrowUp)) || (egui_context.input(|i| i.raw_scroll_delta.y > 0.0) && self.scrolling) {
                         log::trace!("arrow up pressed!");
 
                         if self.doubleup {
