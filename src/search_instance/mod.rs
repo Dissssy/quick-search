@@ -91,6 +91,7 @@ fn load_plugins() -> PluginLoadResult {
                                     let colored_name = Searchable_TO::colored_name(&plogon);
                                     log::trace!("colored_name: {:?}", colored_name);
                                     let id = Searchable_TO::plugin_id(&plogon);
+                                    log::trace!("id: {:?}", id);
 
                                     // do plugin config checking here
                                     for (key, value) in default_plugin_config.iter() {
@@ -120,6 +121,7 @@ fn load_plugins() -> PluginLoadResult {
 
                                     plugins.push(Plugin {
                                         name,
+                                        // delay: plugin_info.delay,
                                         colored_name: colored_char_to_layout_job(colored_name.into()),
                                         priority: plugin_info.priority,
                                         id: id.clone(),
@@ -174,6 +176,7 @@ pub struct Plugin {
     name: &'static str,
     colored_name: egui::text::LayoutJob,
     priority: u32,
+    // delay: u32,
     id: quick_search_lib::PluginId,
     // path: std::path::PathBuf,
     _p: Searchable_TO<'static, quick_search_lib::abi_stable::std_types::RBox<()>>,

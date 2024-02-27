@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use egui::RichText;
 use quick_search_lib::SearchResult;
 mod holder;
@@ -11,7 +13,6 @@ use holder::ResultHolder;
 pub struct App<'a> {
     config_lock: ConfigLock<'a>,
 
-    loadresults: PluginLoadResult,
     audio: Option<rusty_audio::Audio>,
     size: Option<egui::Vec2>,
     positioned: bool,
@@ -19,29 +20,31 @@ pub struct App<'a> {
     // search
     input: String,
     selected: bool,
-    results: ResultHolder,
-    last_changed: Option<std::time::Instant>,
+    // results: ResultHolder,
+    // last_changed: Option<std::time::Instant>,
     doubledown: bool,
     doubleup: bool,
     scrolling: bool,
 
     // search threading
-    oldhandles: Vec<std::thread::JoinHandle<(Vec<SearchResult>, SearchMetadata)>>,
-    joinhandles: Vec<std::thread::JoinHandle<(Vec<SearchResult>, SearchMetadata)>>,
-    clear_next: bool,
+    // oldhandles: Vec<std::thread::JoinHandle<(Vec<SearchResult>, SearchMetadata)>>,
+    // joinhandles: Vec<std::thread::JoinHandle<(Vec<SearchResult>, SearchMetadata)>>,
+    // clear_next: bool,
     force_redraw_now: bool,
 
     // results stuff
     passthrough: bool,
 
     time: std::time::Instant,
+
+    searchholder: SearchHolder,
 }
 
 impl App<'_> {
     pub fn new(loadresults: PluginLoadResult) -> Self {
         let config_lock = crate::CONFIG_FILE.lock();
         Self {
-            loadresults,
+            searchholder: SearchHolder::new(loadresults),
             audio: if config_lock.get().audio_enabled {
                 let mut audio = rusty_audio::Audio::new();
                 audio.add("notif", crate::AUDIO_FILE_PATH.clone());
@@ -54,98 +57,98 @@ impl App<'_> {
             positioned: bool::default(),
             input: String::default(),
             selected: bool::default(),
-            results: ResultHolder::default(),
-            last_changed: Option::default(),
+            // results: ResultHolder::default(),
+            // last_changed: Option::default(),
             doubledown: bool::default(),
             doubleup: bool::default(),
             scrolling: bool::default(),
-            oldhandles: Vec::default(),
-            joinhandles: Vec::default(),
-            clear_next: bool::default(),
+            // oldhandles: Vec::default(),
+            // joinhandles: Vec::default(),
+            // clear_next: bool::default(),
             force_redraw_now: bool::default(),
             passthrough: bool::default(),
             time: std::time::Instant::now(),
         }
     }
-    pub fn try_dispatch_search(&mut self) -> anyhow::Result<()> {
-        // check old handles
-        let mut newoldhandles = vec![];
-        for handle in self.oldhandles.drain(..) {
-            if !handle.is_finished() {
-                newoldhandles.push(handle);
-            }
-        }
-        self.oldhandles = newoldhandles;
+    // pub fn try_dispatch_search(&mut self) -> anyhow::Result<()> {
+    //     // check old handles
+    //     let mut newoldhandles = vec![];
+    //     for handle in self.oldhandles.drain(..) {
+    //         if !handle.is_finished() {
+    //             newoldhandles.push(handle);
+    //         }
+    //     }
+    //     self.oldhandles = newoldhandles;
 
-        if self.oldhandles.len() > 32 {
-            log::error!("oldhandles is too big! not spawning new thread until it is cleared");
-            return Ok(());
-        }
+    //     if self.oldhandles.len() > 32 {
+    //         log::error!("oldhandles is too big! not spawning new thread until it is cleared");
+    //         return Ok(());
+    //     }
 
-        if self.input.is_empty() {
-            self.results.clear();
-            self.joinhandles.clear();
-        } else {
-            // drain the old handles to oldhandles
-            // self.joinhandles.clear();
-            for handle in self.joinhandles.drain(..) {
-                self.oldhandles.push(handle);
-            }
+    //     if self.input.is_empty() {
+    //         self.results.clear();
+    //         self.joinhandles.clear();
+    //     } else {
+    //         // drain the old handles to oldhandles
+    //         // self.joinhandles.clear();
+    //         for handle in self.joinhandles.drain(..) {
+    //             self.oldhandles.push(handle);
+    //         }
 
-            self.clear_next = true;
-            // let searches = {
-            //     let mut searches = vec![];
-            //     for search in &self.searches {
-            //         searches.push(search.copy());
-            //     }
-            //     searches
-            // };
-            // let input = self.input.clone();
-            // self.joinhandle = Some(std::thread::spawn(move || App::search(searches, input)));
+    //         self.clear_next = true;
+    //         // let searches = {
+    //         //     let mut searches = vec![];
+    //         //     for search in &self.searches {
+    //         //         searches.push(search.copy());
+    //         //     }
+    //         //     searches
+    //         // };
+    //         // let input = self.input.clone();
+    //         // self.joinhandle = Some(std::thread::spawn(move || App::search(searches, input)));
 
-            for search in &self.loadresults.plugins {
-                let input = self.input.to_lowercase();
-                self.joinhandles.push(search.search_delayed(&input));
-            }
-        }
+    //         for search in &self.loadresults.plugins {
+    //             let input = self.input.to_lowercase();
+    //             self.joinhandles.push(search.search_delayed(&input));
+    //         }
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    pub fn check_results(&mut self) {
-        // if let Some(handle) = self.joinhandle.take() {
-        //     // check if the thread is done
-        //     if handle.is_finished() {
-        //         // if it is, then get the results
-        //         if let Ok(results) = handle.join() {
-        //             // and set them
-        //             self.results = results;
-        //         }
-        //     } else {
-        //         // if it isn't, then put the handle back
-        //         self.joinhandle = Some(handle);
-        //     }
-        // }
+    // pub fn check_results(&mut self) {
+    //     // if let Some(handle) = self.joinhandle.take() {
+    //     //     // check if the thread is done
+    //     //     if handle.is_finished() {
+    //     //         // if it is, then get the results
+    //     //         if let Ok(results) = handle.join() {
+    //     //             // and set them
+    //     //             self.results = results;
+    //     //         }
+    //     //     } else {
+    //     //         // if it isn't, then put the handle back
+    //     //         self.joinhandle = Some(handle);
+    //     //     }
+    //     // }
 
-        let mut newhandles = vec![];
+    //     let mut newhandles = vec![];
 
-        for handle in self.joinhandles.drain(..) {
-            if handle.is_finished() {
-                self.force_redraw_now = true;
-                if let Ok((results, metadata)) = handle.join() {
-                    if self.clear_next {
-                        self.results.clear();
-                        self.clear_next = false;
-                    }
-                    self.results.add_results(results, metadata);
-                }
-            } else {
-                newhandles.push(handle);
-            }
-        }
+    //     for handle in self.joinhandles.drain(..) {
+    //         if handle.is_finished() {
+    //             self.force_redraw_now = true;
+    //             if let Ok((results, metadata)) = handle.join() {
+    //                 if self.clear_next {
+    //                     self.results.clear();
+    //                     self.clear_next = false;
+    //                 }
+    //                 self.results.add_results(results, metadata);
+    //             }
+    //         } else {
+    //             newhandles.push(handle);
+    //         }
+    //     }
 
-        self.joinhandles = newhandles;
-    }
+    //     self.joinhandles = newhandles;
+    // }
 }
 
 impl egui_overlay::EguiOverlay for App<'_> {
@@ -252,33 +255,35 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     //     r.surrender_focus();
                     // }
 
-                    if !self.selected || self.results.is_empty() {
+                    if !self.selected || self.searchholder.results.is_empty() {
                         r.request_focus();
                         self.selected = true;
                     }
 
                     // if self.joinhandles.is_empty() {
                     // }
-                    self.check_results();
+                    self.searchholder.dispatch(&self.config_lock, &self.input);
 
                     if r.changed() {
                         // log::!("input changed!");
                         // if let Err(e) = self.try_dispatch_search() {
                         //     log::!("error: {}", e);
                         // }
-                        self.last_changed = Some(std::time::Instant::now());
+                        // self.last_changed = Some(std::time::Instant::now());
+                        self.searchholder.input_changed();
                         self.doubledown = false;
                         self.doubleup = false;
-                    } else if let Some(changed) = self.last_changed {
-                        // if it has been x ms since the last change, then dispatch the search and set last_changed to None
-                        if std::time::Instant::now().duration_since(changed).as_millis() >= self.config_lock.get().search_delay as u128 {
-                            log::trace!("input not changed, dispatching search!");
-                            if let Err(e) = self.try_dispatch_search() {
-                                log::error!("error: {}", e);
-                            }
-                            self.last_changed = None;
-                        }
                     }
+                    // } else if let Some(changed) = self.last_changed {
+                    //     // if it has been x ms since the last change, then dispatch the search and set last_changed to None
+                    //     if std::time::Instant::now().duration_since(changed).as_millis() >= self.config_lock.get().total_search_delay as u128 {
+                    //         log::trace!("input not changed, dispatching search!");
+                    //         if let Err(e) = self.try_dispatch_search() {
+                    //             log::error!("error: {}", e);
+                    //         }
+                    //         self.last_changed = None;
+                    //     }
+                    // }
 
                     if egui_context.input(|i| i.key_pressed(egui::Key::ArrowDown)) || (egui_context.input(|i| i.raw_scroll_delta.y < 0.0) && self.scrolling) {
                         log::trace!("arrow down pressed!");
@@ -288,13 +293,13 @@ impl egui_overlay::EguiOverlay for App<'_> {
                             self.scrolling = true;
                             r.surrender_focus();
                             // self.index = self.results.len().saturating_sub(1);
-                            self.results.clear_cursor();
-                            self.results.decrement_cursor();
+                            self.searchholder.results.clear_cursor();
+                            self.searchholder.results.decrement_cursor();
                         }
 
                         if self.scrolling {
                             // self.index += 1;
-                            self.results.increment_cursor();
+                            self.searchholder.results.increment_cursor();
                             // if self.index >= self.results.len() {
                             //     self.index = 0;
                             // }
@@ -311,7 +316,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                             self.scrolling = true;
                             r.surrender_focus();
                             // self.index = 0;
-                            self.results.clear_cursor();
+                            self.searchholder.results.clear_cursor();
                         }
 
                         if self.scrolling {
@@ -320,7 +325,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                             // } else {
                             //     self.index -= 1;
                             // }
-                            self.results.decrement_cursor();
+                            self.searchholder.results.decrement_cursor();
                         } else {
                             self.doubleup = true;
                         }
@@ -328,13 +333,13 @@ impl egui_overlay::EguiOverlay for App<'_> {
 
                     if egui_context.input(|i| i.key_pressed(egui::Key::PageUp)) {
                         log::trace!("page up pressed!");
-                        self.results.jump_backward(self.scrolling);
+                        self.searchholder.results.jump_backward(self.scrolling);
                         self.scrolling = true;
                     }
 
                     if egui_context.input(|i| i.key_pressed(egui::Key::PageDown)) {
                         log::trace!("page down pressed!");
-                        self.results.jump_forward(self.scrolling);
+                        self.searchholder.results.jump_forward(self.scrolling);
                         self.scrolling = true;
                     }
 
@@ -343,7 +348,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                         self.scrolling = !self.scrolling;
                         if self.scrolling {
                             // self.index = 0;
-                            self.results.clear_cursor();
+                            self.searchholder.results.clear_cursor();
                         } else {
                             r.request_focus();
                         }
@@ -360,8 +365,8 @@ impl egui_overlay::EguiOverlay for App<'_> {
                         } else {
                             // if enter was pressed while scrolling, we should use the selected result and close the window
                             // get result at index and call action
-                            if let Some((result, plugin_id)) = self.results.get_from_cursor() {
-                                for plugin in &self.loadresults.plugins {
+                            if let Some((result, plugin_id)) = self.searchholder.results.get_from_cursor() {
+                                for plugin in &self.searchholder.loadresults.plugins {
                                     if plugin.id == plugin_id {
                                         plugin.execute(result);
                                     }
@@ -393,17 +398,17 @@ impl egui_overlay::EguiOverlay for App<'_> {
                 .pivot(egui::Align2::CENTER_TOP)
                 .fixed_pos(egui::Pos2::new(midwindowx as f32, midwindowy as f32 + 30.))
                 .show(egui_context, |ui| {
-                    if !self.joinhandles.is_empty() {
-                        ui.spinner();
-                    } else if self.config_lock.get().show_countdown {
-                        if let Some(changed) = self.last_changed {
-                            let dur_since = std::time::Instant::now().duration_since(changed).as_millis();
-                            let delay = self.config_lock.get().search_delay as u128;
-                            if dur_since < delay {
-                                ui.label(format!("{:.2} seconds until search", delay.saturating_sub(dur_since) as f32 / 1000.));
-                            }
-                        }
-                    }
+                    // if !self.joinhandles.is_empty() {
+                    //     ui.spinner();
+                    // } else if self.config_lock.get().show_countdown {
+                    //     if let Some(changed) = self.last_changed {
+                    //         let dur_since = std::time::Instant::now().duration_since(changed).as_millis();
+                    //         let delay = self.config_lock.get().total_search_delay as u128;
+                    //         if dur_since < delay {
+                    //             ui.label(format!("{:.2} seconds until search", delay.saturating_sub(dur_since) as f32 / 1000.));
+                    //         }
+                    //     }
+                    // }
                     // let mut last_result = None;
                     // for (i, result) in self.results.iter_all().enumerate() {
                     //     let dont_realloc = result.source.name();
@@ -456,6 +461,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     // }
 
                     for e in self
+                        .searchholder
                         .results
                         .iter_nice(self.scrolling, self.config_lock.get().entries_around_cursor, self.config_lock.get().group_entries_while_unselected)
                     {
@@ -534,7 +540,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     egui_context.used_size().x
                 });
             if let Some(index) = set_cursor_later {
-                self.results.raw_set_cursor(index);
+                self.searchholder.results.raw_set_cursor(index);
                 self.scrolling = true;
             }
         }
@@ -557,5 +563,73 @@ impl egui_overlay::EguiOverlay for App<'_> {
             egui_context.request_repaint_after(std::time::Duration::from_millis(100));
         }
         self.force_redraw_now = false;
+    }
+}
+
+pub struct SearchHolder {
+    loadresults: PluginLoadResult,
+    joinhandles: Vec<std::thread::JoinHandle<(Vec<SearchResult>, SearchMetadata)>>,
+    oldhandles: Vec<std::thread::JoinHandle<(Vec<SearchResult>, SearchMetadata)>>,
+    last_changed: Option<std::time::Instant>,
+    dispatched_searches: HashSet<String>,
+    results: ResultHolder,
+}
+
+impl SearchHolder {
+    pub fn new(loadresults: PluginLoadResult) -> Self {
+        Self {
+            loadresults,
+            joinhandles: Vec::default(),
+            oldhandles: Vec::default(),
+            last_changed: Option::default(),
+            dispatched_searches: HashSet::default(),
+            results: ResultHolder::default(),
+        }
+    }
+    pub fn input_changed(&mut self) {
+        self.last_changed = Some(std::time::Instant::now());
+        self.dispatched_searches.clear();
+        self.oldhandles.append(&mut self.joinhandles);
+        self.results.clear();
+    }
+    pub fn dispatch(&mut self, config: &ConfigLock<'_>, input: &str) {
+        let config = config.get();
+        self.oldhandles.retain(|handle| !handle.is_finished());
+
+        let time_since_last_change = self
+            .last_changed
+            .map(|changed| std::time::Instant::now().duration_since(changed).as_millis())
+            .unwrap_or(0)
+            .saturating_sub(config.total_search_delay as u128);
+
+        if !input.is_empty() {
+            for plugin in self.loadresults.plugins.iter() {
+                // if it has been long enough since the last change, and the search has not been dispatched, then dispatch the search
+                if (config.get_plugin(plugin.name).map(|p| p.delay).unwrap_or(100) as u128) < time_since_last_change && !self.dispatched_searches.contains(plugin.name) {
+                    log::trace!("dispatching search for {} after {}ms", plugin.name, time_since_last_change);
+                    self.joinhandles.push(plugin.search_delayed(input));
+                    self.dispatched_searches.insert(plugin.name.to_string());
+                }
+            }
+        }
+
+        let mut newhandles = vec![];
+
+        for handle in self.joinhandles.drain(..) {
+            if handle.is_finished() {
+                if let Ok((r, m)) = handle.join() {
+                    log::trace!("search thread finished for {} with {} results", m.raw_name, r.len());
+                    if !r.is_empty() {
+                        self.results.add_results(r, m);
+                    }
+                } else {
+                    log::error!("search thread failed");
+                }
+            } else {
+                newhandles.push(handle);
+            }
+        }
+
+        self.joinhandles = newhandles;
     }
 }

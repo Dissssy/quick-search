@@ -206,7 +206,7 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                         .on_hover_text("Set the number of entries around the cursor to display while scrolling. e.g. if set to 2, 5 entries centered around the cursor will be displayed.");
                     ui.add(egui::Slider::new(&mut self.config_lock.get_mut().group_entries_while_unselected, 0..=10).text("Entries while unselected"))
                         .on_hover_text("Set the number of entries to display from each group while the search bar is not selected. set to 0 to display all entries.");
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().search_delay, 250..=10000).text("Search delay"))
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().total_search_delay, 0..=10000).text("Search delay"))
                         .on_hover_text("Set the debounce time in ms, lower values may run excessive searches, higher values mean a longer delay before the search is run.");
 
                     ui.horizontal(|ui| {
@@ -258,16 +258,20 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                         TableBuilder::new(ui)
                             .column(Column::auto().resizable(false))
                             .column(Column::auto().resizable(false))
+                            .column(Column::auto().resizable(false))
                             .column(Column::remainder())
                             .header(20.0, |mut header| {
                                 header.col(|ui| {
-                                    ui.add(nowrap_heading("Plugin"));
+                                    ui.add(nowrap_heading("Plugin")).on_hover_text("The name of the plugin");
                                 });
                                 header.col(|ui| {
-                                    ui.add(nowrap_heading("Enabled"));
+                                    ui.add(nowrap_heading("Enabled")).on_hover_text("Enable or disable the plugin");
                                 });
                                 header.col(|ui| {
-                                    ui.add(nowrap_heading("Priority"));
+                                    ui.add(nowrap_heading("Priority")).on_hover_text("Set the priority of the plugin (higher priority shows up above lower priority)");
+                                });
+                                header.col(|ui| {
+                                    ui.add(nowrap_heading("Delay")).on_hover_text("Set the delay in ms before the plugin is queried after the search bar changes. Lower values may cause excessive queries, higher values may cause the plugin to be slow to respond.");
                                 });
                             })
                             .body(|mut body| {
@@ -361,6 +365,9 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                                             });
                                             row.col(|ui| {
                                                 ui.add(egui::Slider::new(&mut state.priority, 0..=128));
+                                            });
+                                            row.col(|ui| {
+                                                ui.add(egui::Slider::new(&mut state.delay, 0..=10000));
                                             });
                                         })
                                     }

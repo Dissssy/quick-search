@@ -82,7 +82,7 @@ pub struct Config {
     pub appearance_delay: usize,
     pub entries_around_cursor: usize,
     pub group_entries_while_unselected: usize,
-    pub search_delay: usize,
+    pub total_search_delay: usize,
     pub show_countdown: bool,
 }
 
@@ -147,8 +147,12 @@ impl Config {
         self.plugin_states.entry(name.to_string()).or_insert(PluginConfig {
             enabled: true,
             priority: 0,
+            delay: 100,
             plugin_config: default_config,
         })
+    }
+    pub fn get_plugin(&self, name: &str) -> Option<&PluginConfig> {
+        self.plugin_states.get(name)
     }
     pub fn save(&self) {
         let file = super::DIRECTORY.config_dir().join("config.toml");
@@ -179,13 +183,14 @@ impl Config {
 pub struct PluginConfig {
     pub enabled: bool,
     pub priority: u32,
+    pub delay: u32,
     pub plugin_config: quick_search_lib::Config,
 }
 
 #[derive(Deserialize, Default, Clone, Debug, PartialEq)]
 struct PossibleConfig {
     #[serde(default)]
-    plugin_states: Option<HashMap<String, PluginConfig>>,
+    plugin_states: Option<HashMap<String, PossiblePluginConfig>>,
     #[serde(default)]
     audio_enabled: Option<bool>,
     #[serde(default)]
@@ -199,7 +204,7 @@ struct PossibleConfig {
     #[serde(default)]
     group_entries_while_unselected: Option<usize>,
     #[serde(default)]
-    search_delay: Option<usize>,
+    total_search_delay: Option<usize>,
     #[serde(default)]
     show_countdown: Option<bool>,
 }
@@ -207,15 +212,38 @@ struct PossibleConfig {
 impl From<PossibleConfig> for Config {
     fn from(config: PossibleConfig) -> Self {
         Config {
-            plugin_states: config.plugin_states.unwrap_or_default(),
+            plugin_states: config.plugin_states.map(|h| h.into_iter().map(|(k, v)| (k, PluginConfig::from(v))).collect()).unwrap_or_default(),
             audio_enabled: config.audio_enabled.unwrap_or(true),
             truncate_context_length: config.truncate_context_length.unwrap_or(100),
             truncate_title_length: config.truncate_title_length.unwrap_or(100),
             appearance_delay: config.appearance_delay.unwrap_or(250),
             entries_around_cursor: config.entries_around_cursor.unwrap_or(2),
             group_entries_while_unselected: config.group_entries_while_unselected.unwrap_or(3),
-            search_delay: config.search_delay.unwrap_or(500),
+            total_search_delay: config.total_search_delay.unwrap_or(500),
             show_countdown: config.show_countdown.unwrap_or(false),
+        }
+    }
+}
+
+#[derive(Deserialize, Default, Clone, Debug, PartialEq)]
+struct PossiblePluginConfig {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    priority: Option<u32>,
+    #[serde(default)]
+    delay: Option<u32>,
+    #[serde(default)]
+    plugin_config: Option<quick_search_lib::Config>,
+}
+
+impl From<PossiblePluginConfig> for PluginConfig {
+    fn from(config: PossiblePluginConfig) -> Self {
+        PluginConfig {
+            enabled: config.enabled.unwrap_or(true),
+            priority: config.priority.unwrap_or(0),
+            delay: config.delay.unwrap_or(250),
+            plugin_config: config.plugin_config.unwrap_or_default(),
         }
     }
 }

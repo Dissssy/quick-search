@@ -16,7 +16,7 @@ impl ResultHolder {
         self.cursor = 0;
     }
     pub fn add_results(&mut self, results: Vec<SearchResult>, metadata: SearchMetadata) {
-        let res_len = self.results.len();
+        let res_len = results.len();
         let this_name = metadata.raw_name.clone();
         self.results.push(ResultGroup { results, metadata: Rc::new(metadata) });
         self.results.sort_by(|a, b| b.metadata.priority.cmp(&a.metadata.priority));
@@ -28,7 +28,7 @@ impl ResultHolder {
             }
             len_before += results.results.len();
         }
-        if self.cursor > len_before {
+        if self.cursor >= len_before {
             self.cursor += res_len;
         }
     }
