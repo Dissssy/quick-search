@@ -130,6 +130,8 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                         // glfw_backend.window.hide();
                         glfw_backend.window.show();
                         glfw_backend.window.set_mouse_passthrough(true);
+                        glfw_backend.window.set_title("QuickSearch Config");
+                        glfw_backend.window.set_icon_from_pixels(crate::icon_pixelimages());
 
                         // std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -142,7 +144,7 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                             current_name
                         };
 
-                        if current_focus_name != "glfw window" {
+                        if current_focus_name != "QuickSearch Config" {
                             // glfw_backend.window.hide();
                             // glfw_backend.window.show();
                             glfw_backend.window.set_should_close(true);
@@ -208,12 +210,13 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                         .on_hover_text("Set the number of entries to display from each group while the search bar is not selected. set to 0 to display all entries.");
                     ui.add(egui::Slider::new(&mut self.config_lock.get_mut().total_search_delay, 0..=10000).text("Search delay"))
                         .on_hover_text("Set the debounce time in ms, lower values may run excessive searches, higher values mean a longer delay before the search is run.");
-
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut self.config_lock.get_mut().audio_enabled, "Sound effects")
                             .on_hover_text("Enable or disable sound effects when the search bar is opened");
-                        ui.checkbox(&mut self.config_lock.get_mut().show_countdown, "Show countdown")
-                            .on_hover_text("Enable or disable the countdown until the searches are dispatched");
+                        // ui.checkbox(&mut self.config_lock.get_mut().flash_taskbar, "Flash taskbar")
+                        //     .on_hover_text("Enable or disable flashing the taskbar when the search bar is opened");
+                        // ui.checkbox(&mut self.config_lock.get_mut().show_countdown, "Show countdown")
+                        //     .on_hover_text("Enable or disable the countdown until the searches are dispatched");
                         if let Some(ref mut autolaunchinfo) = self.autolaunchinfo {
                             ui.horizontal(|ui| {
                                 if ui

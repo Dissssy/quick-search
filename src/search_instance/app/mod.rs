@@ -181,6 +181,8 @@ impl egui_overlay::EguiOverlay for App<'_> {
                         // glfw_backend.window.hide();
                         glfw_backend.window.show();
                         glfw_backend.window.set_mouse_passthrough(true);
+                        glfw_backend.window.set_title("QuickSearch");
+                        glfw_backend.window.set_icon_from_pixels(crate::icon_pixelimages());
 
                         // std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -193,7 +195,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                             current_name
                         };
 
-                        if current_focus_name != "glfw window" {
+                        if current_focus_name != "QuickSearch" {
                             // glfw_backend.window.hide();
                             // glfw_backend.window.show();
                             glfw_backend.window.set_should_close(true);

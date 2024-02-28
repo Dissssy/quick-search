@@ -7,6 +7,7 @@ mod tray_icon;
 use config::ConfigLoader;
 
 use directories::ProjectDirs;
+use egui_overlay::egui_window_glfw_passthrough::glfw::PixelImage;
 use minwin::sync::Mutex as WinMutex;
 use std::{
     sync::{Arc, Mutex as StdMutex},
@@ -15,6 +16,10 @@ use std::{
 use windows_hotkeys::{keys::VKey as Key, HotkeyManager, HotkeyManagerImpl as _};
 
 include_flate::flate!(pub static AUDIO_FILE_BYTES: [u8] from "assets/notif.mp3");
+include_flate::flate!(pub static ICON_BYTES_16: [u8] from "assets/icon-16.png");
+include_flate::flate!(pub static ICON_BYTES_32: [u8] from "assets/icon-32.png");
+include_flate::flate!(pub static ICON_BYTES_64: [u8] from "assets/icon-64.png");
+include_flate::flate!(pub static ICON_BYTES_128: [u8] from "assets/icon-128.png");
 
 lazy_static::lazy_static! {
     static ref DIRECTORY: ProjectDirs = ProjectDirs::from("com", "planet-51-devs", "quick-search").expect("Failed to get project directories");
@@ -35,6 +40,23 @@ lazy_static::lazy_static! {
     };
     static ref CURRENT_PATH: std::path::PathBuf = std::env::current_exe().expect("Failed to get current exe path");
     static ref CORRECT_PATH: std::path::PathBuf = get_correct_path();
+}
+
+fn to_pixel_image(bytes: &[u8]) -> PixelImage {
+    // PixelImage is a struct from egui_overlay that contains a width, height, and a Vec<u32> of pixels
+    let img = image::load_from_memory(bytes).expect("Failed to load image from memory");
+    let img = img.to_rgba8();
+    let (width, height) = img.dimensions();
+    let mut pixels = Vec::with_capacity((width * height) as usize);
+    // The image data is 32-bit, little-endian, non-premultiplied RGBA, i.e. eight bits per channel with the red channel first. The pixels are arranged canonically as sequential rows, starting from the top-left corner.
+    for pixel in img.pixels() {
+        let r = pixel[0] as u32;
+        let g = pixel[1] as u32;
+        let b = pixel[2] as u32;
+        let a = pixel[3] as u32;
+        pixels.push((a << 24) | (b << 16) | (g << 8) | r);
+    }
+    PixelImage { width, height, pixels }
 }
 
 // const DELAY_TUNING: u128 = 250;
@@ -331,4 +353,13 @@ fn main() {
 
 fn get_correct_path() -> std::path::PathBuf {
     DIRECTORY.data_dir().join("quick-search.exe")
+}
+
+fn icon_pixelimages() -> Vec<PixelImage> {
+    vec![
+        to_pixel_image(&ICON_BYTES_16),
+        to_pixel_image(&ICON_BYTES_32),
+        to_pixel_image(&ICON_BYTES_64),
+        to_pixel_image(&ICON_BYTES_128),
+    ]
 }
