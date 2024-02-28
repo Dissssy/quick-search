@@ -231,16 +231,22 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                             "Invalid format string".to_owned()
                         }
                     ).size(self.config_lock.get().time_font_size).color(egui::Color32::LIGHT_RED))).on_hover_text("Current time display");
-                    ui.text_edit_singleline(&mut self.tz_search_string).on_hover_text("Search for a timezone by name, e.g. 'America/New_York' or 'New York'");
-                    if !self.tz_search_string.is_empty() {
-                        let lower_case = self.tz_search_string.to_lowercase();
-    
-                        for tz in chrono_tz::TZ_VARIANTS.iter().filter(|tz| tz.to_string().to_lowercase().contains(&lower_case)).take(3) {
-                            if ui.selectable_label(self.config_lock.get().timezone == *tz, tz.to_string()).clicked() {
-                                self.config_lock.get_mut().timezone = *tz;
+                    let lower_case = self.tz_search_string.to_lowercase().replace(['_', '-', '/', ' '], "");
+                    ui.horizontal(|ui| {
+                        // ui.text_edit_singleline(&mut self.tz_search_string).on_hover_text("Search for a timezone by name, e.g. 'America/New_York' or 'New York'");
+                        ui.add(egui::TextEdit::singleline(&mut self.tz_search_string).hint_text(self.config_lock.get().timezone.to_string()).desired_width(200.0));
+                        ui.separator();
+                        egui::ScrollArea::horizontal().scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).id_source("NATIVEtimezone").show(ui, |ui| {
+                            for (i, tz) in chrono_tz::TZ_VARIANTS.iter().filter(|tz| tz.to_string().to_lowercase().replace(['_', '-', '/', ' '], "").contains(&lower_case)).enumerate() {
+                                if i != 0 {
+                                    ui.separator();
+                                }
+                                if ui.selectable_label(self.config_lock.get().timezone == *tz, tz.to_string()).clicked() {
+                                    self.config_lock.get_mut().timezone = *tz;
+                                }
                             }
-                        }
-                    }
+                        });
+                    });
 
                     // dropdown for timezone selection
                     // let mut selected = chrono_tz::Tz::UTC;
@@ -344,28 +350,41 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                                                             .pivot(egui::Align2::CENTER_CENTER)
                                                             .default_pos(egui::Pos2::new(midwindowx as f32, midwindowy as f32))
                                                             .show(egui_context, |ui| {
+                                                                let mut to_sort = Vec::new();
                                                                 for (k, v) in state.plugin_config.iter_mut() {
+                                                                    to_sort.push((k, v));
+                                                                }
+                                                                to_sort.sort_by(|a, b| a.0.cmp(b.0));
+
+                                                                for (k, v) in to_sort.into_iter() {
                                                                     ui.horizontal(|ui| {
                                                                         ui.label(k.as_str());
+                                                                        ui.separator();
                                                                         match v {
                                                                             quick_search_lib::EntryType::Bool { ref mut value } => {
                                                                                 ui.checkbox(value, "");
                                                                             }
-                                                                            quick_search_lib::EntryType::Int { ref mut value, min, max } => match (min.into_rust(), max.into_rust()) {
-                                                                                (Some(min), Some(max)) => {
-                                                                                    ui.add(egui::Slider::new(value, min..=max));
-                                                                                }
-                                                                                _ => {
-                                                                                    ui.label("no range provided, refer to the documentation for this plugin and configure it manually in the config file.");
-                                                                                }
-                                                                            },
-                                                                            quick_search_lib::EntryType::Float { ref mut value, min, max } => match (min.into_rust(), max.into_rust()) {
-                                                                                (Some(min), Some(max)) => {
-                                                                                    ui.add(egui::Slider::new(value, min..=max));
-                                                                                }
-                                                                                _ => {
-                                                                                    ui.label("no range provided, refer to the documentation for this plugin and configure it manually in the config file.");
-                                                                                }
+                                                                            quick_search_lib::EntryType::Int { ref mut value, min, max } => {
+                                                                                ui.add(egui::Slider::new(value, min.unwrap_or(i64::MIN)..=max.unwrap_or(i64::MAX)));
+                                                                                // match (min.into_rust(), max.into_rust()) {
+                                                                                //     (Some(min), Some(max)) => {
+                                                                                //             ui.add(egui::Slider::new(value, min..=max));
+                                                                                //         }
+                                                                                //         _ => {
+                                                                                //             ui.label("no range provided, refer to the documentation for this plugin and configure it manually in the config file.");
+                                                                                //         }
+                                                                                //     }
+                                                                                },
+                                                                            quick_search_lib::EntryType::Float { ref mut value, min, max } => {
+                                                                                ui.add(egui::Slider::new(value, min.unwrap_or(f64::MIN)..=max.unwrap_or(f64::MAX)));
+                                                                                // match (min.into_rust(), max.into_rust()) {
+                                                                                //     (Some(min), Some(max)) => {
+                                                                                //         ui.add(egui::Slider::new(value, min..=max));
+                                                                                //     }
+                                                                                //     _ => {
+                                                                                //         ui.label("no range provided, refer to the documentation for this plugin and configure it manually in the config file.");
+                                                                                //     }
+                                                                                // }
                                                                             },
                                                                             quick_search_lib::EntryType::String { ref mut value } => {
                                                                                 let mut this = value.clone().into_rust();
@@ -376,9 +395,35 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                                                                                 };
 
                                                                             }
-                                                                            _ => {
-                                                                                ui.label("not implemented, refer to the documentation for this plugin and configure it manually in the config file.");
+                                                                            quick_search_lib::EntryType::Enum { value, options } => {
+                                                                                // ui.vertical(|ui| {
+                                                                                //     for set_of_options in options.chunks(3) {
+                                                                                //         ui.horizontal(|ui| {
+                                                                                //             for option in set_of_options {
+                                                                                //                 if ui.selectable_label(*value == option.value, option.name.to_string()).clicked() {
+                                                                                //                     *value = option.value;
+                                                                                //                 }
+
+                                                                                //             }
+                                                                                //         });
+                                                                                //     }
+                                                                                // });
+                                                                                egui::ScrollArea::horizontal().scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).id_source(k).show(ui, |ui| {
+                                                                                    for (i, option) in options.iter().enumerate() {
+                                                                                        if i != 0 {
+                                                                                            ui.separator();
+                                                                                        }
+                                                                                        if ui.selectable_label(*value == option.value, option.name.to_string()).clicked() {
+                                                                                            *value = option.value;
+                                                                                        }
+                                                                                    }
+                                                                                });
+                                                                                // for option in options {
+                                                                                // }
                                                                             }
+                                                                            // _ => {
+                                                                            //     ui.label("not implemented, refer to the documentation for this plugin and configure it manually in the config file.");
+                                                                            // }
                                                                         }
                                                                     });
                                                                     ui.separator();

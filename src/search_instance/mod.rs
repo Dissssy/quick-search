@@ -46,11 +46,10 @@ fn load_plugins() -> PluginLoadResult {
         }
     };
 
-    let mut cl = super::CONFIG_FILE.lock();
-
     // let mut to_remove = Vec::new();
     let mut taken_names = HashSet::new();
     let mut found_names = HashSet::new();
+    let mut cl = super::CONFIG_FILE.lock();
 
     {
         let config = cl.get_mut();
@@ -109,15 +108,24 @@ fn load_plugins() -> PluginLoadResult {
                                                 (quick_search_lib::EntryType::String { .. }, quick_search_lib::EntryType::String { .. }) => {}
                                                 (quick_search_lib::EntryType::Bool { .. }, quick_search_lib::EntryType::Bool { .. }) => {}
                                                 (quick_search_lib::EntryType::Int { min, max, .. }, quick_search_lib::EntryType::Int { min: new_min, max: new_max, .. }) => {
+                                                    log::trace!("plugin {} has int config key {}", name, key);
+                                                    log::trace!("old min: {:?}, old max: {:?}", min, max);
                                                     *min = *new_min;
                                                     *max = *new_max;
+                                                    log::trace!("new min: {:?}, new max: {:?}", min, max);
                                                 }
                                                 (quick_search_lib::EntryType::Float { min, max, .. }, quick_search_lib::EntryType::Float { min: new_min, max: new_max, .. }) => {
+                                                    log::trace!("plugin {} has float config key {}", name, key);
+                                                    log::trace!("old min: {:?}, old max: {:?}", min, max);
                                                     *min = *new_min;
                                                     *max = *new_max;
+                                                    log::trace!("new min: {:?}, new max: {:?}", min, max);
                                                 }
                                                 (quick_search_lib::EntryType::Enum { options, .. }, quick_search_lib::EntryType::Enum { options: new_options, .. }) => {
+                                                    log::trace!("plugin {} has enum config key {}", name, key);
+                                                    log::trace!("old options: {:?}", options);
                                                     *options = new_options.clone();
+                                                    log::trace!("new options: {:?}", options);
                                                 }
                                                 _ => {
                                                     log::warn!("plugin {} has incorrect config key {}", name, key);
