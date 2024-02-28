@@ -1,4 +1,4 @@
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 mod config;
 mod search_instance;
@@ -218,8 +218,6 @@ fn main() {
                             }
                         };
                         log::trace!("Received UI opener signal");
-                        let thread = thread.clone();
-                        log::trace!("Thread cloned");
                         match thread.lock() {
                             Ok(mut threadopt) => {
                                 log::trace!("Thread mutex locked");
