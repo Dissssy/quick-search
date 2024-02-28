@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+#![cfg_attr(not(feature = "debug"), windows_subsystem = "windows")]
 
 mod config;
 mod search_instance;
@@ -92,6 +92,7 @@ fn main() {
     log::info!("Exe path: {:?}", *CURRENT_PATH);
     log::info!("Correct path: {:?}", *CORRECT_PATH);
 
+    #[cfg(not(feature = "debug"))]
     if *CURRENT_PATH != *CORRECT_PATH {
         let res = rfd::MessageDialog::new()
             .set_title("Quick Search")

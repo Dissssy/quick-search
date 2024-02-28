@@ -26,6 +26,29 @@ pub struct App<'a> {
     // auto_error: Option<String>,
     autolaunchinfo: Option<AutoLaunchInfo>,
     tz_search_string: String,
+    current_tab: Tabs,
+    config_backup: Option<crate::config::Config>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tabs {
+    General,
+    Plugins,
+    Time,
+    About, // todo
+    Debug, // todo
+}
+
+impl std::fmt::Display for Tabs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Tabs::General => write!(f, "General"),
+            Tabs::Plugins => write!(f, "Plugins"),
+            Tabs::Time => write!(f, "Time"),
+            Tabs::About => write!(f, "About"),
+            Tabs::Debug => write!(f, "Debug"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +99,7 @@ impl App<'_> {
         };
 
         Self {
+            config_backup: Some(config_lock.get().clone()),
             no_plugins_including_missing: states.iter().filter(|(name, _)| !loadresults.missing.contains(name)).count() == 0,
             loadresults,
             states,
@@ -92,7 +116,264 @@ impl App<'_> {
             // auto_error: None,
             autolaunchinfo,
             tz_search_string: String::new(),
+            current_tab: Tabs::General,
         }
+    }
+
+    fn general_tab(&mut self, ui: &mut egui::Ui) {
+        ui.add(egui::Slider::new(&mut self.config_lock.get_mut().appearance_delay, 0..=1000).text("Appearance delay"))
+            .on_hover_text("Set the delay in ms before the search bar appears after the hotkey is pressed, lower values may cause flickering on some systems.");
+        ui.add(egui::Slider::new(&mut self.config_lock.get_mut().total_search_delay, 0..=10000).text("Search delay"))
+            .on_hover_text("Set the debounce time in ms, lower values may run excessive searches, higher values mean a longer delay before the search is run.");
+        ui.add(egui::Slider::new(&mut self.config_lock.get_mut().truncate_title_length, 25..=250).text("Truncate title length"))
+            .on_hover_text("Set the maximum length of the title text for a search result");
+        ui.add(egui::Slider::new(&mut self.config_lock.get_mut().truncate_context_length, 25..=250).text("Truncate context length"))
+            .on_hover_text("Set the maximum length of the context text for a search result");
+        ui.add(egui::Slider::new(&mut self.config_lock.get_mut().entries_around_cursor, 0..=7).text("Entries around cursor"))
+            .on_hover_text("Set the number of entries around the cursor to display while scrolling. e.g. if set to 2, 5 entries centered around the cursor will be displayed.");
+        ui.add(egui::Slider::new(&mut self.config_lock.get_mut().group_entries_while_unselected, 0..=10).text("Entries while unselected"))
+            .on_hover_text("Set the number of entries to display from each group while the search bar is not selected. set to 0 to display all entries.");
+        ui.add(egui::Slider::new(&mut self.config_lock.get_mut().gap_between_search_bar_and_results, 0.0..=100.0).text("Gap between search bar and results"))
+            .on_hover_text("Set the gap between the search bar and the search results, in pixels");
+        ui.checkbox(&mut self.config_lock.get_mut().audio_enabled, "Sound effects")
+            .on_hover_text("Enable or disable sound effects when the search bar is opened");
+
+        if let Some(ref mut autolaunchinfo) = self.autolaunchinfo {
+            ui.horizontal(|ui| {
+                if ui
+                    .checkbox(&mut autolaunchinfo.enabled, "Run on startup")
+                    .on_hover_text("Enable or disable running QuickSearch on startup")
+                    .changed()
+                {
+                    if autolaunchinfo.enabled {
+                        if let Err(e) = autolaunchinfo.autolaunch.enable() {
+                            let error = format!("failed to enable autolaunch: {}", e);
+                            log::error!("{}", error);
+                            autolaunchinfo.error = Some(error);
+                            autolaunchinfo.enabled = false;
+                        };
+                    } else if let Err(e) = autolaunchinfo.autolaunch.disable() {
+                        let error = format!("failed to disable autolaunch: {}", e);
+                        log::error!("{}", error);
+                        autolaunchinfo.enabled = true;
+                    }
+                }
+                if let Some(error) = &autolaunchinfo.error {
+                    ui.label(RichText::new(error).color(Color32::RED));
+                }
+            });
+        } else {
+            ui.label("AutoLaunch not available, run QuickSearch from the correct location to enable it.");
+        }
+    }
+
+    fn plugins_tab(&mut self, ui: &mut egui::Ui, midwindowx: i32, midwindowy: i32, egui_context: &egui::Context) {
+        if self.states.is_empty() || self.no_plugins_including_missing {
+            ui.label("No plugins found");
+        } else {
+            TableBuilder::new(ui)
+                .column(Column::auto().resizable(false))
+                .column(Column::auto().resizable(false))
+                .column(Column::auto().resizable(false))
+                .column(Column::remainder())
+                .header(20.0, |mut header| {
+                    header.col(|ui| {
+                        ui.add(nowrap_heading("Plugin")).on_hover_text("The name of the plugin");
+                    });
+                    header.col(|ui| {
+                        ui.add(nowrap_heading("Priority")).on_hover_text("Set the priority of the plugin (higher priority shows up above lower priority)");
+                    });
+                    header.col(|ui| {
+                        ui.add(nowrap_heading("Delay")).on_hover_text("Set the delay in ms before the plugin is queried after the search bar changes. Lower values may cause excessive queries, higher values may cause the plugin to be slow to respond.");
+                    });
+                })
+                .body(|mut body| {
+                    self.show_states(&mut body, midwindowx, midwindowy, egui_context);
+                });
+        }
+    }
+
+    fn time_tab(&mut self, ui: &mut egui::Ui) {
+        ui.checkbox(&mut self.config_lock.get_mut().clock_enabled, "Show clock")
+            .on_hover_text("Enable or disable the clock display");
+        ui.add(egui::Slider::new(&mut self.config_lock.get_mut().time_font_size, 8.0..=32.0).text("Time font size"))
+            .on_hover_text("Set the font size for the time display");
+        ui.text_edit_singleline(&mut self.config_lock.get_mut().chrono_format_string)
+            .on_hover_text("Set the format string for the time display, refer to the chrono documentation for the format string. e.g. '%Y-%m-%d %H:%M:%S'");
+        let mut try_display = true;
+        for item in chrono::format::StrftimeItems::new(&self.config_lock.get().chrono_format_string) {
+            if let chrono::format::Item::Error = item {
+                try_display = false;
+            }
+        }
+        ui.add(egui::Label::new(
+            egui::RichText::new(if try_display {
+                chrono::Utc::now()
+                    .with_timezone(&self.config_lock.get().timezone)
+                    .format(&self.config_lock.get().chrono_format_string)
+                    .to_string()
+            } else {
+                "Invalid format string".to_owned()
+            })
+            .size(self.config_lock.get().time_font_size)
+            .color(egui::Color32::LIGHT_RED),
+        ))
+        .on_hover_text("Current time display");
+        let lower_case = self.tz_search_string.to_lowercase().replace(['_', '-', '/', ' '], "");
+        ui.horizontal(|ui| {
+            // ui.text_edit_singleline(&mut self.tz_search_string).on_hover_text("Search for a timezone by name, e.g. 'America/New_York' or 'New York'");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.tz_search_string)
+                    .hint_text(self.config_lock.get().timezone.to_string())
+                    .desired_width(200.0),
+            );
+            ui.separator();
+            egui::ScrollArea::horizontal()
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .id_source("NATIVEtimezone")
+                .show(ui, |ui| {
+                    for (i, tz) in chrono_tz::TZ_VARIANTS
+                        .iter()
+                        .filter(|tz| tz.to_string().to_lowercase().replace(['_', '-', '/', ' '], "").contains(&lower_case))
+                        .enumerate()
+                    {
+                        if i != 0 {
+                            ui.separator();
+                        }
+                        if ui.selectable_label(self.config_lock.get().timezone == *tz, tz.to_string()).clicked() {
+                            self.config_lock.get_mut().timezone = *tz;
+                        }
+                    }
+                });
+        });
+    }
+
+    fn about_tab(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("About");
+        });
+    }
+
+    fn debug_tab(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Debug");
+        });
+    }
+
+    fn show_states(&mut self, body: &mut egui_extras::TableBody<'_>, midwindowx: i32, midwindowy: i32, egui_context: &egui::Context) {
+        self.states
+            .iter_mut()
+            .enumerate()
+            .filter(|(_, (name, _))| !self.loadresults.missing.contains(name))
+            .for_each(|(i, (name, state))| {
+                body.row(20.0, |mut row| {
+                    row.col(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut state.enabled, "");
+                            if !state.plugin_config.empty() {
+                                if self.menu_open_for == Some(i) {
+                                    if ui
+                                        .add(Button::new(RichText::new(&*name).italics().color(Color32::LIGHT_GREEN)).wrap(false))
+                                        .on_hover_cursor(egui::CursorIcon::Alias)
+                                        .on_hover_text("Plugin has extra configurations")
+                                        .clicked()
+                                    {
+                                        log::trace!("Close menu for {}", i);
+                                        self.menu_open_for = None;
+                                    }
+
+                                    if Self::show_config_window(midwindowx, midwindowy, egui_context, name, state) {
+                                        self.menu_open_for = None;
+                                    }
+                                } else {
+                                    // dummy comment
+                                    if ui
+                                        .add(Button::new(RichText::new(&*name).color(Color32::GREEN)).wrap(false))
+                                        .on_hover_cursor(egui::CursorIcon::Alias)
+                                        .on_hover_text("Plugin has extra configurations")
+                                        .clicked()
+                                    {
+                                        log::trace!("Open menu for {}", i);
+                                        self.menu_open_for = Some(i);
+                                    }
+                                }
+                            } else {
+                                ui.add(Label::new(&*name).wrap(false));
+                            }
+                        });
+                    });
+                    row.col(|ui| {
+                        ui.add(egui::Slider::new(&mut state.priority, 0..=128));
+                    });
+                    row.col(|ui| {
+                        ui.add(egui::Slider::new(&mut state.delay, 0..=10000));
+                    });
+                })
+            });
+    }
+
+    fn show_config_window(midwindowx: i32, midwindowy: i32, egui_context: &egui::Context, name: &str, state: &mut PluginConfig) -> bool {
+        egui::Window::new(format!("{} extra configurations", name))
+            .title_bar(true)
+            .collapsible(false)
+            // .fixed_pos(Pos2::new(midwindowx as f32 - 200., midwindowy as f32 - 30.))
+            // .fixed_size(Vec2::new(400., 60.))
+            .resizable(false)
+            // .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(egui::Pos2::new(midwindowx as f32, midwindowy as f32))
+            .show(egui_context, |ui| {
+                let mut to_sort = Vec::new();
+                for (k, v) in state.plugin_config.iter_mut() {
+                    to_sort.push((k, v));
+                }
+                to_sort.sort_by(|a, b| a.0.cmp(b.0));
+
+                for (k, v) in to_sort.into_iter() {
+                    ui.horizontal(|ui| {
+                        ui.label(k.as_str());
+                        ui.separator();
+                        match v {
+                            quick_search_lib::EntryType::Bool { ref mut value } => {
+                                ui.checkbox(value, "");
+                            }
+                            quick_search_lib::EntryType::Int { ref mut value, min, max } => {
+                                ui.add(egui::Slider::new(value, min.unwrap_or(i64::MIN)..=max.unwrap_or(i64::MAX)));
+                            }
+                            quick_search_lib::EntryType::Float { ref mut value, min, max } => {
+                                ui.add(egui::Slider::new(value, min.unwrap_or(f64::MIN)..=max.unwrap_or(f64::MAX)));
+                            }
+                            quick_search_lib::EntryType::String { ref mut value } => {
+                                let mut this = value.clone().into_rust();
+                                if ui.text_edit_singleline(&mut this).changed() {
+                                    if let Ok(rstr) = RString::from_str(&this) {
+                                        *value = rstr;
+                                    }
+                                };
+                            }
+                            quick_search_lib::EntryType::Enum { value, options } => {
+                                egui::ScrollArea::horizontal()
+                                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                                    .id_source(k)
+                                    .show(ui, |ui| {
+                                        for (i, option) in options.iter().enumerate() {
+                                            if i != 0 {
+                                                ui.separator();
+                                            }
+                                            if ui.selectable_label(*value == option.value, option.name.to_string()).clicked() {
+                                                *value = option.value;
+                                            }
+                                        }
+                                    });
+                            }
+                        }
+                    });
+                    ui.separator();
+                }
+                ui.button("Close").clicked()
+            })
+            .and_then(|x| x.inner)
+            .unwrap_or(false)
     }
 }
 
@@ -117,25 +398,10 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                         log::error!("no monitor");
                     }
                     Some(monitor) => {
-                        // this code will literally only run once so we're gonna also request focus
-                        // unsafe {
-                        //     let window_ptr = egui_overlay::egui_window_glfw_passthrough::glfw::Context::window_ptr(&glfw_backend.window);
-                        //     log::!("window_ptr: {:p}", window_ptr);
-                        //     log::!("null: {}", window_ptr.is_null());
-                        //     if !window_ptr.is_null() {
-                        //         let r = SetForegroundWindow(std::mem::transmute(window_ptr));
-                        //         log::!("setforegroundwindow: {}", r);
-                        //     }
-                        // }
-                        // std::thread::sleep(std::time::Duration::from_millis(100));
-                        // glfw_backend.window.focus();
-                        // glfw_backend.window.hide();
                         glfw_backend.window.show();
                         glfw_backend.window.set_mouse_passthrough(true);
                         glfw_backend.window.set_title("QuickSearch Config");
                         glfw_backend.window.set_icon_from_pixels(crate::icon_pixelimages());
-
-                        // std::thread::sleep(std::time::Duration::from_millis(100));
 
                         let current_focus_name = unsafe {
                             let current = winapi::um::winuser::GetForegroundWindow();
@@ -147,24 +413,8 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                         };
 
                         if current_focus_name != "QuickSearch Config" {
-                            // glfw_backend.window.hide();
-                            // glfw_backend.window.show();
                             glfw_backend.window.set_should_close(true);
-                        } //else if let Some(audio) = &mut self.audio {
-                          //    audio.play("notif");
-                          //}
-
-                        // let (x, y) = monitor.get_physical_size();
-                        // let (sx, sy) = monitor.get_content_scale();
-                        // log::!("monitor size: {}x{}", x, y);
-                        // log::!("monitor scale: {}x{}", sx, sy);
-                        // *v = Some(Vec2::new(x as f32, y as f32));
-
-                        // if let Some(mode) = monitor.get_video_mode() {
-                        //     let (x, y) = (mode.width, mode.height);
-                        //     log::!("monitor size: {}x{}", x, y);
-                        //     *v = Some(Vec2::new(x as f32, y as f32));
-                        // } // THIS SCREWED UP MY MONITOR LOL
+                        }
 
                         let (x1, y1, x2, y2) = monitor.get_workarea();
                         log::info!("monitor workarea: {}x{} {}x{}", x1, y1, x2, y2);
@@ -195,273 +445,39 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
 
             egui::Window::new("Config")
                 .title_bar(false)
-                // .fixed_pos(Pos2::new(midwindowx as f32 - 200., midwindowy as f32 - 30.))
-                // .fixed_size(Vec2::new(400., 60.))
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
                 .show(egui_context, |ui| {
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().appearance_delay, 0..=1000).text("Appearance delay"))
-                        .on_hover_text("Set the delay in ms before the search bar appears after the hotkey is pressed, lower values may cause flickering on some systems.");
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().total_search_delay, 0..=10000).text("Search delay"))
-                        .on_hover_text("Set the debounce time in ms, lower values may run excessive searches, higher values mean a longer delay before the search is run.");
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().truncate_title_length, 25..=250).text("Truncate title length"))
-                        .on_hover_text("Set the maximum length of the title text for a search result");
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().truncate_context_length, 25..=250).text("Truncate context length"))
-                        .on_hover_text("Set the maximum length of the context text for a search result");
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().entries_around_cursor, 0..=7).text("Entries around cursor"))
-                        .on_hover_text("Set the number of entries around the cursor to display while scrolling. e.g. if set to 2, 5 entries centered around the cursor will be displayed.");
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().group_entries_while_unselected, 0..=10).text("Entries while unselected"))
-                        .on_hover_text("Set the number of entries to display from each group while the search bar is not selected. set to 0 to display all entries.");
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().gap_between_search_bar_and_results, 0.0..=100.0).text("Gap between search bar and results"))
-                        .on_hover_text("Set the gap between the search bar and the search results, in pixels");
-                    ui.separator();
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().time_font_size, 8.0..=32.0).text("Time font size"))
-                        .on_hover_text("Set the font size for the time display");
-                    ui.text_edit_singleline(&mut self.config_lock.get_mut().chrono_format_string).on_hover_text("Set the format string for the time display, refer to the chrono documentation for the format string. e.g. '%Y-%m-%d %H:%M:%S'");
-                    let mut try_display = true;
-                    for item in chrono::format::StrftimeItems::new(&self.config_lock.get().chrono_format_string) {
-                        if let chrono::format::Item::Error = item {
-                            try_display = false;
-                        }
-                    }
-                    ui.add(egui::Label::new(egui::RichText::new(
-                        if try_display {
-                            chrono::Utc::now().with_timezone(&self.config_lock.get().timezone).format(&self.config_lock.get().chrono_format_string).to_string()
-                        } else {
-                            "Invalid format string".to_owned()
-                        }
-                    ).size(self.config_lock.get().time_font_size).color(egui::Color32::LIGHT_RED))).on_hover_text("Current time display");
-                    let lower_case = self.tz_search_string.to_lowercase().replace(['_', '-', '/', ' '], "");
                     ui.horizontal(|ui| {
-                        // ui.text_edit_singleline(&mut self.tz_search_string).on_hover_text("Search for a timezone by name, e.g. 'America/New_York' or 'New York'");
-                        ui.add(egui::TextEdit::singleline(&mut self.tz_search_string).hint_text(self.config_lock.get().timezone.to_string()).desired_width(200.0));
-                        ui.separator();
-                        egui::ScrollArea::horizontal().scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).id_source("NATIVEtimezone").show(ui, |ui| {
-                            for (i, tz) in chrono_tz::TZ_VARIANTS.iter().filter(|tz| tz.to_string().to_lowercase().replace(['_', '-', '/', ' '], "").contains(&lower_case)).enumerate() {
-                                if i != 0 {
-                                    ui.separator();
-                                }
-                                if ui.selectable_label(self.config_lock.get().timezone == *tz, tz.to_string()).clicked() {
-                                    self.config_lock.get_mut().timezone = *tz;
-                                }
+                        for (i, tab) in [Tabs::General, Tabs::Plugins, Tabs::Time, Tabs::About, Tabs::Debug].into_iter().enumerate() {
+                            if i != 0 {
+                                ui.separator();
                             }
-                        });
-                    });
-
-                    // dropdown for timezone selection
-                    // let mut selected = chrono_tz::Tz::UTC;
-                    // for timezone in chrono_tz::TZ_VARIANTS {
-                    //     if ui.selectable_label(selected == timezone, timezone.to_string()).clicked() {
-                    //         selected = timezone;
-                    //     }
-                    // }
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        ui.checkbox(&mut self.config_lock.get_mut().audio_enabled, "Sound effects")
-                            .on_hover_text("Enable or disable sound effects when the search bar is opened");
-                        // ui.checkbox(&mut self.config_lock.get_mut().flash_taskbar, "Flash taskbar")
-                        //     .on_hover_text("Enable or disable flashing the taskbar when the search bar is opened");
-                        // ui.checkbox(&mut self.config_lock.get_mut().show_countdown, "Show countdown")
-                        //     .on_hover_text("Enable or disable the countdown until the searches are dispatched");
-                        if let Some(ref mut autolaunchinfo) = self.autolaunchinfo {
-                            ui.horizontal(|ui| {
-                                if ui
-                                    .checkbox(&mut autolaunchinfo.enabled, "Run on startup")
-                                    .on_hover_text("Enable or disable running QuickSearch on startup")
-                                    .changed()
-                                {
-                                    if autolaunchinfo.enabled {
-                                        if let Err(e) = autolaunchinfo.autolaunch.enable() {
-                                            let error = format!("failed to enable autolaunch: {}", e);
-                                            log::error!("{}", error);
-                                            autolaunchinfo.error = Some(error);
-                                            autolaunchinfo.enabled = false;
-                                        };
-                                    } else if let Err(e) = autolaunchinfo.autolaunch.disable() {
-                                        let error = format!("failed to disable autolaunch: {}", e);
-                                        log::error!("{}", error);
-                                        autolaunchinfo.enabled = true;
-                                    }
-                                }
-                                if let Some(error) = &autolaunchinfo.error {
-                                    ui.label(RichText::new(error).color(Color32::RED));
-                                }
-                            });
-                        } else {
-                            ui.label("AutoLaunch not available, run QuickSearch from the correct location to enable it.");
+                            if ui.add(egui::SelectableLabel::new(self.current_tab == tab, tab.to_string())).clicked() {
+                                self.current_tab = tab;
+                            }
                         }
                     });
                     ui.separator();
 
-                    if self.states.is_empty() || self.no_plugins_including_missing {
-                        ui.label("No plugins found");
-                    } else {
-                        // for (name, state) in self.states.iter_mut() {
-                        //     ui.horizontal(|ui| {
-                        //         ui.label(name);
-                        //         ui.checkbox(&mut state.enabled, "Enabled");
-                        //         ui.label("Priority");
-                        //         ui.add(egui::Slider::new(&mut state.priority, 0..=128).text("##priority"));
-                        //     });
-                        // }
-                        TableBuilder::new(ui)
-                            .column(Column::auto().resizable(false))
-                            .column(Column::auto().resizable(false))
-                            .column(Column::auto().resizable(false))
-                            .column(Column::remainder())
-                            .header(20.0, |mut header| {
-                                header.col(|ui| {
-                                    ui.add(nowrap_heading("Plugin")).on_hover_text("The name of the plugin");
-                                });
-                                header.col(|ui| {
-                                    ui.add(nowrap_heading("Enabled")).on_hover_text("Enable or disable the plugin");
-                                });
-                                header.col(|ui| {
-                                    ui.add(nowrap_heading("Priority")).on_hover_text("Set the priority of the plugin (higher priority shows up above lower priority)");
-                                });
-                                header.col(|ui| {
-                                    ui.add(nowrap_heading("Delay")).on_hover_text("Set the delay in ms before the plugin is queried after the search bar changes. Lower values may cause excessive queries, higher values may cause the plugin to be slow to respond.");
-                                });
-                            })
-                            .body(|mut body| {
-                                for (i, (name, state)) in self.states.iter_mut().enumerate() {
-                                    if !self.loadresults.missing.contains(name) {
-                                        body.row(20.0, |mut row| {
-                                            row.col(|ui| {
-                                                if !state.plugin_config.empty() {
-                                                    if self.menu_open_for == Some(i) {
-                                                        if ui
-                                                            .add(Button::new(RichText::new(&*name).italics().color(Color32::LIGHT_GREEN)).wrap(false))
-                                                            .on_hover_cursor(egui::CursorIcon::Alias)
-                                                            .on_hover_text("Plugin has extra configurations")
-                                                            .clicked()
-                                                        {
-                                                            log::trace!("Close menu for {}", i);
-                                                            self.menu_open_for = None;
-                                                        }
-
-                                                        // todo: window for plugin config
-                                                        egui::Window::new(format!("{} extra configurations", name))
-                                                            .title_bar(true).collapsible(false)
-                                                            // .fixed_pos(Pos2::new(midwindowx as f32 - 200., midwindowy as f32 - 30.))
-                                                            // .fixed_size(Vec2::new(400., 60.))
-                                                            .resizable(false)
-                                                            // .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
-                                                            .pivot(egui::Align2::CENTER_CENTER)
-                                                            .default_pos(egui::Pos2::new(midwindowx as f32, midwindowy as f32))
-                                                            .show(egui_context, |ui| {
-                                                                let mut to_sort = Vec::new();
-                                                                for (k, v) in state.plugin_config.iter_mut() {
-                                                                    to_sort.push((k, v));
-                                                                }
-                                                                to_sort.sort_by(|a, b| a.0.cmp(b.0));
-
-                                                                for (k, v) in to_sort.into_iter() {
-                                                                    ui.horizontal(|ui| {
-                                                                        ui.label(k.as_str());
-                                                                        ui.separator();
-                                                                        match v {
-                                                                            quick_search_lib::EntryType::Bool { ref mut value } => {
-                                                                                ui.checkbox(value, "");
-                                                                            }
-                                                                            quick_search_lib::EntryType::Int { ref mut value, min, max } => {
-                                                                                ui.add(egui::Slider::new(value, min.unwrap_or(i64::MIN)..=max.unwrap_or(i64::MAX)));
-                                                                                // match (min.into_rust(), max.into_rust()) {
-                                                                                //     (Some(min), Some(max)) => {
-                                                                                //             ui.add(egui::Slider::new(value, min..=max));
-                                                                                //         }
-                                                                                //         _ => {
-                                                                                //             ui.label("no range provided, refer to the documentation for this plugin and configure it manually in the config file.");
-                                                                                //         }
-                                                                                //     }
-                                                                                },
-                                                                            quick_search_lib::EntryType::Float { ref mut value, min, max } => {
-                                                                                ui.add(egui::Slider::new(value, min.unwrap_or(f64::MIN)..=max.unwrap_or(f64::MAX)));
-                                                                                // match (min.into_rust(), max.into_rust()) {
-                                                                                //     (Some(min), Some(max)) => {
-                                                                                //         ui.add(egui::Slider::new(value, min..=max));
-                                                                                //     }
-                                                                                //     _ => {
-                                                                                //         ui.label("no range provided, refer to the documentation for this plugin and configure it manually in the config file.");
-                                                                                //     }
-                                                                                // }
-                                                                            },
-                                                                            quick_search_lib::EntryType::String { ref mut value } => {
-                                                                                let mut this = value.clone().into_rust();
-                                                                                if ui.text_edit_singleline(&mut this).changed() {
-                                                                                    if let Ok(rstr) = RString::from_str(&this) {
-                                                                                        *value = rstr;
-                                                                                    }
-                                                                                };
-
-                                                                            }
-                                                                            quick_search_lib::EntryType::Enum { value, options } => {
-                                                                                // ui.vertical(|ui| {
-                                                                                //     for set_of_options in options.chunks(3) {
-                                                                                //         ui.horizontal(|ui| {
-                                                                                //             for option in set_of_options {
-                                                                                //                 if ui.selectable_label(*value == option.value, option.name.to_string()).clicked() {
-                                                                                //                     *value = option.value;
-                                                                                //                 }
-
-                                                                                //             }
-                                                                                //         });
-                                                                                //     }
-                                                                                // });
-                                                                                egui::ScrollArea::horizontal().scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).id_source(k).show(ui, |ui| {
-                                                                                    for (i, option) in options.iter().enumerate() {
-                                                                                        if i != 0 {
-                                                                                            ui.separator();
-                                                                                        }
-                                                                                        if ui.selectable_label(*value == option.value, option.name.to_string()).clicked() {
-                                                                                            *value = option.value;
-                                                                                        }
-                                                                                    }
-                                                                                });
-                                                                                // for option in options {
-                                                                                // }
-                                                                            }
-                                                                            // _ => {
-                                                                            //     ui.label("not implemented, refer to the documentation for this plugin and configure it manually in the config file.");
-                                                                            // }
-                                                                        }
-                                                                    });
-                                                                    ui.separator();
-                                                                }
-                                                                if ui.button("Close").clicked() {
-                                                                    self.menu_open_for = None;
-                                                                }
-                                                            });
-                                                    } else {
-                                                        // dummy comment
-                                                        if ui
-                                                            .add(Button::new(RichText::new(&*name).color(Color32::GREEN)).wrap(false))
-                                                            .on_hover_cursor(egui::CursorIcon::Alias)
-                                                            .on_hover_text("Plugin has extra configurations")
-                                                            .clicked()
-                                                        {
-                                                            log::trace!("Open menu for {}", i);
-                                                            self.menu_open_for = Some(i);
-                                                        }
-                                                    }
-                                                } else {
-                                                    ui.add(Label::new(&*name).wrap(false));
-                                                }
-                                            });
-                                            row.col(|ui| {
-                                                ui.checkbox(&mut state.enabled, "");
-                                            });
-                                            row.col(|ui| {
-                                                ui.add(egui::Slider::new(&mut state.priority, 0..=128));
-                                            });
-                                            row.col(|ui| {
-                                                ui.add(egui::Slider::new(&mut state.delay, 0..=10000));
-                                            });
-                                        })
-                                    }
-                                }
-                            });
+                    match self.current_tab {
+                        Tabs::General => {
+                            self.general_tab(ui);
+                        }
+                        Tabs::Plugins => {
+                            self.plugins_tab(ui, midwindowx, midwindowy, egui_context);
+                        }
+                        Tabs::Time => {
+                            self.time_tab(ui);
+                        }
+                        Tabs::About => {
+                            self.about_tab(ui);
+                        }
+                        Tabs::Debug => {
+                            self.debug_tab(ui);
+                        }
                     }
+
                     ui.separator();
                     ui.horizontal(|ui| {
                         if ui.button(RichText::new("Cancel").color(Color32::RED)).clicked() {
@@ -514,11 +530,13 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
         match self.close_at_end {
             CloseState::DoNothing => {}
             CloseState::CloseNoSave => {
+                if let Some(mut config) = self.config_backup.take() {
+                    std::mem::swap(&mut config, self.config_lock.get_mut());
+                }
                 glfw_backend.window.set_should_close(true);
             }
             CloseState::CloseSave => {
                 self.config_lock.get_mut().plugin_states = self.states.clone().into_iter().collect::<HashMap<String, PluginConfig>>();
-                // config_lock.get_mut() trips a flag within the config_lock that makes it save the config file
                 glfw_backend.window.set_should_close(true);
             }
         }

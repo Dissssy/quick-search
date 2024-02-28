@@ -72,7 +72,7 @@ impl Drop for ConfigLock<'_> {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Config {
     #[serde(serialize_with = "ordered_map")]
     pub plugin_states: HashMap<String, PluginConfig>,
@@ -89,6 +89,7 @@ pub struct Config {
     pub timezone: chrono_tz::Tz,
     pub chrono_format_string: String,
     pub time_font_size: f32,
+    pub clock_enabled: bool,
 }
 
 fn ordered_map<S, K: Ord + Serialize, V: Serialize>(value: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
@@ -230,6 +231,8 @@ struct PossibleConfig {
     chrono_format_string: Option<String>,
     #[serde(default)]
     time_font_size: Option<f32>,
+    #[serde(default)]
+    clock_enabled: Option<bool>,
 }
 
 impl From<PossibleConfig> for Config {
@@ -249,6 +252,7 @@ impl From<PossibleConfig> for Config {
             timezone: config.timezone.unwrap_or(chrono_tz::Tz::UTC),
             chrono_format_string: config.chrono_format_string.unwrap_or_else(|| "%Y-%m-%d %H:%M:%S".to_string()),
             time_font_size: config.time_font_size.unwrap_or(20.0),
+            clock_enabled: config.clock_enabled.unwrap_or(true),
         }
     }
 }

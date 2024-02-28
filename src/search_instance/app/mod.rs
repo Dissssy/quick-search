@@ -251,20 +251,22 @@ impl egui_overlay::EguiOverlay for App<'_> {
                 .show(egui_context, |ui| {
                     let r = ui
                         .vertical_centered(|ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(
-                                        chrono::Utc::now()
-                                            .with_timezone(&self.config_lock.get().timezone)
-                                            .format(&self.config_lock.get().chrono_format_string)
-                                            .to_string(),
+                            if self.config_lock.get().clock_enabled {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(
+                                            chrono::Utc::now()
+                                                .with_timezone(&self.config_lock.get().timezone)
+                                                .format(&self.config_lock.get().chrono_format_string)
+                                                .to_string(),
+                                        )
+                                        .size(self.config_lock.get().time_font_size)
+                                        .color(egui::Color32::LIGHT_RED),
                                     )
-                                    .size(self.config_lock.get().time_font_size)
-                                    .color(egui::Color32::LIGHT_RED),
-                                )
-                                .wrap(false),
-                            );
-                            ui.separator();
+                                    .wrap(false),
+                                );
+                                ui.separator();
+                            }
 
                             let textinput = egui::TextEdit::singleline(&mut self.input).vertical_align(egui::Align::Center).horizontal_align(egui::Align::Center);
 

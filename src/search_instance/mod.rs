@@ -171,7 +171,7 @@ fn load_plugins() -> PluginLoadResult {
                                 }
                             }
                         } else {
-                            eprintln!("not a library: {:?}", file_name);
+                            log::error!("not a library: {:?}", file_name);
                             errors.push((path.to_string_lossy().into(), "not a library".into()));
                         }
                     } else {
