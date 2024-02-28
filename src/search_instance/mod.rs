@@ -81,7 +81,7 @@ fn load_plugins() -> PluginLoadResult {
                                         errors.push((path.to_string_lossy().into(), format!("plugin name `{}` is already taken", name)));
                                         continue;
                                     }
-                                    let default_plugin_config = Searchable_TO::get_config_entries(&plogon);
+                                    let default_plugin_config: quick_search_lib::Config = Searchable_TO::get_config_entries(&plogon);
                                     let plugin_info = config.get_mut_or_default_plugin(name, default_plugin_config.clone());
                                     if !plugin_info.enabled {
                                         log::info!("plugin {} is disabled", name);
@@ -96,12 +96,38 @@ fn load_plugins() -> PluginLoadResult {
                                     // do plugin config checking here
                                     for (key, value) in default_plugin_config.iter() {
                                         // we want to ensure that the plugin config contains the correct keys and that the enum variant of the value is the same, but NOT the contained value
-                                        if plugin_info.plugin_config.get(key.as_str()).is_none() {
-                                            log::warn!("plugin {} is missing config key {}", name, key);
-                                            plugin_info.plugin_config.insert(key.clone(), value.clone());
-                                        } else if plugin_info.plugin_config.get(key.as_str()).map(|v| v.variant()) != Some(value.variant()) {
-                                            log::warn!("plugin {} has incorrect config key {}", name, key);
-                                            plugin_info.plugin_config.insert(key.clone(), value.clone());
+                                        // if plugin_info.plugin_config.get(key.as_str()).is_none() {
+                                        //     log::warn!("plugin {} is missing config key {}", name, key);
+                                        //     plugin_info.plugin_config.insert(key.clone(), value.clone());
+                                        // } else if plugin_info.plugin_config.get(key.as_str()).map(|v| v.variant()) != Some(value.variant()) {
+                                        //     log::warn!("plugin {} has incorrect config key {}", name, key);
+                                        //     plugin_info.plugin_config.insert(key.clone(), value.clone());
+                                        // }
+
+                                        match plugin_info.plugin_config.get_mut(key.as_str()) {
+                                            Some(v) => match (v, value) {
+                                                (quick_search_lib::EntryType::String { .. }, quick_search_lib::EntryType::String { .. }) => {}
+                                                (quick_search_lib::EntryType::Bool { .. }, quick_search_lib::EntryType::Bool { .. }) => {}
+                                                (quick_search_lib::EntryType::Int { min, max, .. }, quick_search_lib::EntryType::Int { min: new_min, max: new_max, .. }) => {
+                                                    *min = *new_min;
+                                                    *max = *new_max;
+                                                }
+                                                (quick_search_lib::EntryType::Float { min, max, .. }, quick_search_lib::EntryType::Float { min: new_min, max: new_max, .. }) => {
+                                                    *min = *new_min;
+                                                    *max = *new_max;
+                                                }
+                                                (quick_search_lib::EntryType::Enum { options, .. }, quick_search_lib::EntryType::Enum { options: new_options, .. }) => {
+                                                    *options = new_options.clone();
+                                                }
+                                                _ => {
+                                                    log::warn!("plugin {} has incorrect config key {}", name, key);
+                                                    plugin_info.plugin_config.insert(key.clone(), value.clone());
+                                                }
+                                            },
+                                            None => {
+                                                log::warn!("plugin {} is missing config key {}", name, key);
+                                                plugin_info.plugin_config.insert(key.clone(), value.clone());
+                                            }
                                         }
                                     }
 

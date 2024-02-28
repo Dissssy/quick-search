@@ -113,6 +113,8 @@ impl Config {
                 String::new()
             }
         };
+        // remove any lines that start with `min =` or `max =` because they are not valid anymore and will cause a panic
+        let config = config.lines().filter(|line| !line.starts_with("min =") && !line.starts_with("max =")).collect::<Vec<_>>().join("\n");
 
         let config: PossibleConfig = match toml::from_str(&config) {
             Ok(config) => {
