@@ -351,6 +351,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                             // } else {
                             //     self.index -= 1;
                             // }
+                            r.surrender_focus();
                             self.searchholder.results.decrement_cursor();
                         } else {
                             self.doubleup = true;
