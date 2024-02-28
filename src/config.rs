@@ -85,6 +85,10 @@ pub struct Config {
     pub total_search_delay: usize,
     // pub show_countdown: bool,
     // pub flash_taskbar: bool,
+    pub gap_between_search_bar_and_results: f32,
+    pub timezone: chrono_tz::Tz,
+    pub chrono_format_string: String,
+    pub time_font_size: f32,
 }
 
 fn ordered_map<S, K: Ord + Serialize, V: Serialize>(value: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
@@ -155,7 +159,15 @@ impl Config {
     pub fn get_plugin(&self, name: &str) -> Option<&PluginConfig> {
         self.plugin_states.get(name)
     }
-    pub fn save(&self) {
+    pub fn save(&mut self) {
+        // verify the format string is valid
+        for item in chrono::format::StrftimeItems::new(&self.chrono_format_string) {
+            if let chrono::format::Item::Error = item {
+                log::error!("Invalid chrono format string: {}", self.chrono_format_string);
+                self.chrono_format_string = "%Y-%m-%d %H:%M:%S".to_string();
+                break;
+            }
+        }
         let file = super::DIRECTORY.config_dir().join("config.toml");
         log::trace!("config file: {:?}", file);
         let config = match toml::to_string(&self) {
@@ -210,6 +222,14 @@ struct PossibleConfig {
     // show_countdown: Option<bool>,
     // #[serde(default)]
     // flash_taskbar: Option<bool>,
+    #[serde(default)]
+    gap_between_search_bar_and_results: Option<f32>,
+    #[serde(default)]
+    timezone: Option<chrono_tz::Tz>,
+    #[serde(default)]
+    chrono_format_string: Option<String>,
+    #[serde(default)]
+    time_font_size: Option<f32>,
 }
 
 impl From<PossibleConfig> for Config {
@@ -225,6 +245,10 @@ impl From<PossibleConfig> for Config {
             total_search_delay: config.total_search_delay.unwrap_or(500),
             // show_countdown: config.show_countdown.unwrap_or(false),
             // flash_taskbar: config.flash_taskbar.unwrap_or(true),
+            gap_between_search_bar_and_results: config.gap_between_search_bar_and_results.unwrap_or(10.0),
+            timezone: config.timezone.unwrap_or(chrono_tz::Tz::UTC),
+            chrono_format_string: config.chrono_format_string.unwrap_or_else(|| "%Y-%m-%d %H:%M:%S".to_string()),
+            time_font_size: config.time_font_size.unwrap_or(20.0),
         }
     }
 }

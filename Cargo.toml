@@ -30,6 +30,8 @@ image = "0.24.9"
 tray-item = { git = "https://github.com/davehorner/tray-item-rs" }
 rfd = "0.14.0"
 auto-launch = "0.5.0"
+chrono = { version = "0.4.19", features = [] }
+chrono-tz = { version = "0.8.6", features = ["serde"] }
 
 [build-dependencies]
 embed-resource = "2.4.1"

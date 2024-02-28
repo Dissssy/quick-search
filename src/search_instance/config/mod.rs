@@ -25,6 +25,7 @@ pub struct App<'a> {
     // auto: bool,
     // auto_error: Option<String>,
     autolaunchinfo: Option<AutoLaunchInfo>,
+    tz_search_string: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +91,7 @@ impl App<'_> {
             // autolaunch,
             // auto_error: None,
             autolaunchinfo,
+            tz_search_string: String::new(),
         }
     }
 }
@@ -198,18 +200,56 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
                 .show(egui_context, |ui| {
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().appearance_delay, 0..=1000).text("Appearance delay"))
+                        .on_hover_text("Set the delay in ms before the search bar appears after the hotkey is pressed, lower values may cause flickering on some systems.");
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().total_search_delay, 0..=10000).text("Search delay"))
+                        .on_hover_text("Set the debounce time in ms, lower values may run excessive searches, higher values mean a longer delay before the search is run.");
                     ui.add(egui::Slider::new(&mut self.config_lock.get_mut().truncate_title_length, 25..=250).text("Truncate title length"))
                         .on_hover_text("Set the maximum length of the title text for a search result");
                     ui.add(egui::Slider::new(&mut self.config_lock.get_mut().truncate_context_length, 25..=250).text("Truncate context length"))
                         .on_hover_text("Set the maximum length of the context text for a search result");
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().appearance_delay, 0..=1000).text("Appearance delay"))
-                        .on_hover_text("Set the delay in ms before the search bar appears after the hotkey is pressed, lower values may cause flickering on some systems.");
                     ui.add(egui::Slider::new(&mut self.config_lock.get_mut().entries_around_cursor, 0..=7).text("Entries around cursor"))
                         .on_hover_text("Set the number of entries around the cursor to display while scrolling. e.g. if set to 2, 5 entries centered around the cursor will be displayed.");
                     ui.add(egui::Slider::new(&mut self.config_lock.get_mut().group_entries_while_unselected, 0..=10).text("Entries while unselected"))
                         .on_hover_text("Set the number of entries to display from each group while the search bar is not selected. set to 0 to display all entries.");
-                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().total_search_delay, 0..=10000).text("Search delay"))
-                        .on_hover_text("Set the debounce time in ms, lower values may run excessive searches, higher values mean a longer delay before the search is run.");
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().gap_between_search_bar_and_results, 0.0..=100.0).text("Gap between search bar and results"))
+                        .on_hover_text("Set the gap between the search bar and the search results, in pixels");
+                    ui.separator();
+                    ui.add(egui::Slider::new(&mut self.config_lock.get_mut().time_font_size, 8.0..=32.0).text("Time font size"))
+                        .on_hover_text("Set the font size for the time display");
+                    ui.text_edit_singleline(&mut self.config_lock.get_mut().chrono_format_string).on_hover_text("Set the format string for the time display, refer to the chrono documentation for the format string. e.g. '%Y-%m-%d %H:%M:%S'");
+                    let mut try_display = true;
+                    for item in chrono::format::StrftimeItems::new(&self.config_lock.get().chrono_format_string) {
+                        if let chrono::format::Item::Error = item {
+                            try_display = false;
+                        }
+                    }
+                    ui.add(egui::Label::new(egui::RichText::new(
+                        if try_display {
+                            chrono::Utc::now().with_timezone(&self.config_lock.get().timezone).format(&self.config_lock.get().chrono_format_string).to_string()
+                        } else {
+                            "Invalid format string".to_owned()
+                        }
+                    ).size(self.config_lock.get().time_font_size).color(egui::Color32::LIGHT_RED))).on_hover_text("Current time display");
+                    ui.text_edit_singleline(&mut self.tz_search_string).on_hover_text("Search for a timezone by name, e.g. 'America/New_York' or 'New York'");
+                    if !self.tz_search_string.is_empty() {
+                        let lower_case = self.tz_search_string.to_lowercase();
+    
+                        for tz in chrono_tz::TZ_VARIANTS.iter().filter(|tz| tz.to_string().to_lowercase().contains(&lower_case)).take(3) {
+                            if ui.selectable_label(self.config_lock.get().timezone == *tz, tz.to_string()).clicked() {
+                                self.config_lock.get_mut().timezone = *tz;
+                            }
+                        }
+                    }
+
+                    // dropdown for timezone selection
+                    // let mut selected = chrono_tz::Tz::UTC;
+                    // for timezone in chrono_tz::TZ_VARIANTS {
+                    //     if ui.selectable_label(selected == timezone, timezone.to_string()).clicked() {
+                    //         selected = timezone;
+                    //     }
+                    // }
+                    ui.separator();
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut self.config_lock.get_mut().audio_enabled, "Sound effects")
                             .on_hover_text("Enable or disable sound effects when the search bar is opened");

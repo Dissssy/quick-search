@@ -242,16 +242,40 @@ impl egui_overlay::EguiOverlay for App<'_> {
                 visuals
             });
 
-            egui::Window::new("Search")
+            let barheight = egui::Window::new("Search")
                 .title_bar(false)
                 // .fixed_pos(Pos2::new(midwindowx as f32 - 200., midwindowy as f32 - 30.))
                 // .fixed_size(Vec2::new(400., 60.))
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
                 .show(egui_context, |ui| {
-                    let textinput = egui::TextEdit::singleline(&mut self.input).vertical_align(egui::Align::Center).horizontal_align(egui::Align::Center);
+                    let r = ui
+                        .vertical_centered(|ui| {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(
+                                        chrono::Utc::now()
+                                            .with_timezone(&self.config_lock.get().timezone)
+                                            .format(&self.config_lock.get().chrono_format_string)
+                                            .to_string(),
+                                    )
+                                    .size(self.config_lock.get().time_font_size)
+                                    .color(egui::Color32::LIGHT_RED),
+                                )
+                                .wrap(false),
+                            );
+                            ui.separator();
 
-                    let r = ui.add(textinput);
+                            let textinput = egui::TextEdit::singleline(&mut self.input).vertical_align(egui::Align::Center).horizontal_align(egui::Align::Center);
+
+                            let mut size = ui.available_size();
+
+                            size.y = size.y.min(20.0);
+                            // size.x = size.x.min(20.0);
+
+                            ui.add_sized(size, textinput)
+                        })
+                        .inner;
 
                     // if self.passthrough {
                     //     r.surrender_focus();
@@ -387,163 +411,173 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     };
 
                     egui_context.used_size().x
-                });
+                })
+                .map(|x| x.response.rect.height())
+                .unwrap_or(0.0);
 
-            let mut set_cursor_later = None;
+            if !self.searchholder.results.is_empty() {
+                let mut set_cursor_later = None;
 
-            egui::Window::new("Results")
-                .title_bar(false)
-                // .fixed_pos(Pos2::new(midwindowx as f32, midwindowy as f32))
-                // .fixed_size(Vec2::new(400., 60.))
-                .resizable(false)
-                // .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0., midwindowy as f32 + 30.))
-                .pivot(egui::Align2::CENTER_TOP)
-                .fixed_pos(egui::Pos2::new(midwindowx as f32, midwindowy as f32 + 30.))
-                .show(egui_context, |ui| {
-                    // if !self.joinhandles.is_empty() {
-                    //     ui.spinner();
-                    // } else if self.config_lock.get().show_countdown {
-                    //     if let Some(changed) = self.last_changed {
-                    //         let dur_since = std::time::Instant::now().duration_since(changed).as_millis();
-                    //         let delay = self.config_lock.get().total_search_delay as u128;
-                    //         if dur_since < delay {
-                    //             ui.label(format!("{:.2} seconds until search", delay.saturating_sub(dur_since) as f32 / 1000.));
-                    //         }
-                    //     }
-                    // }
-                    // let mut last_result = None;
-                    // for (i, result) in self.results.iter_all().enumerate() {
-                    //     let dont_realloc = result.source.name();
-                    //     if if let Some((last_result_name, _)) = last_result.as_mut() {
-                    //         let b = *last_result_name != dont_realloc;
-                    //         if b {
-                    //             ui.separator();
-                    //         }
-                    //         b
-                    //     } else {
-                    //         true
-                    //     } {
-                    //         // let mut t = RichText::new(&dont_realloc);
-                    //         last_result = Some((dont_realloc, i));
+                egui::Window::new("Results")
+                    .title_bar(false)
+                    // .fixed_pos(Pos2::new(midwindowx as f32, midwindowy as f32))
+                    // .fixed_size(Vec2::new(400., 60.))
+                    .resizable(false)
+                    // .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0., midwindowy as f32 + 30.))
+                    .pivot(egui::Align2::CENTER_TOP)
+                    .fixed_pos(egui::Pos2::new(
+                        midwindowx as f32,
+                        midwindowy as f32 + (barheight / 2.0) + self.config_lock.get().gap_between_search_bar_and_results,
+                    ))
+                    .show(egui_context, |ui| {
+                        // if !self.joinhandles.is_empty() {
+                        //     ui.spinner();
+                        // } else if self.config_lock.get().show_countdown {
+                        //     if let Some(changed) = self.last_changed {
+                        //         let dur_since = std::time::Instant::now().duration_since(changed).as_millis();
+                        //         let delay = self.config_lock.get().total_search_delay as u128;
+                        //         if dur_since < delay {
+                        //             ui.label(format!("{:.2} seconds until search", delay.saturating_sub(dur_since) as f32 / 1000.));
+                        //         }
+                        //     }
+                        // }
+                        // let mut last_result = None;
+                        // for (i, result) in self.results.iter_all().enumerate() {
+                        //     let dont_realloc = result.source.name();
+                        //     if if let Some((last_result_name, _)) = last_result.as_mut() {
+                        //         let b = *last_result_name != dont_realloc;
+                        //         if b {
+                        //             ui.separator();
+                        //         }
+                        //         b
+                        //     } else {
+                        //         true
+                        //     } {
+                        //         // let mut t = RichText::new(&dont_realloc);
+                        //         last_result = Some((dont_realloc, i));
 
-                    //         // if let Some(color) =  {
-                    //         //     t = t.color(color);
-                    //         // }
+                        //         // if let Some(color) =  {
+                        //         //     t = t.color(color);
+                        //         // }
 
-                    //         ui.add(egui::Label::new(result.source.colored_name()).wrap(false));
-                    //         ui.separator();
-                    //     }
+                        //         ui.add(egui::Label::new(result.source.colored_name()).wrap(false));
+                        //         ui.separator();
+                        //     }
 
-                    //     let last_index = match last_result {
-                    //         Some((_, index)) => index,
-                    //         None => 1,
-                    //     } - 1;
+                        //     let last_index = match last_result {
+                        //         Some((_, index)) => index,
+                        //         None => 1,
+                        //     } - 1;
 
-                    //     // if we are not scrolling, only display the first 2 results for each source
-                    //     if !self.scrolling && (i - last_index) >= 2 {
-                    //         continue;
-                    //     }
+                        //     // if we are not scrolling, only display the first 2 results for each source
+                        //     if !self.scrolling && (i - last_index) >= 2 {
+                        //         continue;
+                        //     }
 
-                    //     // if we are scrolling, and self.index is greater than last_index, only display the 7 results centered around self.index, throwing away if out of bounds
+                        //     // if we are scrolling, and self.index is greater than last_index, only display the 7 results centered around self.index, throwing away if out of bounds
 
-                    //     if self.scrolling && /*(i < self.index.saturating_sub(2) || i > self.index + 2)*/ !self.results.cursor_range().contains(&i) {
-                    //         continue;
-                    //     }
+                        //     if self.scrolling && /*(i < self.index.saturating_sub(2) || i > self.index + 2)*/ !self.results.cursor_range().contains(&i) {
+                        //         continue;
+                        //     }
 
-                    //     if
-                    //     /*i == self.index*/
-                    //     self.results.cursor_on(i) && self.scrolling {
-                    //         ui.add(egui::Label::new(RichText::new(&result.name).color(egui::Color32::LIGHT_BLUE)).wrap(false));
-                    //         if let Some(ref context) = result.context {
-                    //             ui.add(egui::Label::new(RichText::new(context).color(egui::Color32::from_rgb(0, 128, 255))).wrap(false));
-                    //         }
-                    //     } else {
-                    //         ui.add(egui::Label::new(&result.name).wrap(false));
-                    //     };
-                    // }
+                        //     if
+                        //     /*i == self.index*/
+                        //     self.results.cursor_on(i) && self.scrolling {
+                        //         ui.add(egui::Label::new(RichText::new(&result.name).color(egui::Color32::LIGHT_BLUE)).wrap(false));
+                        //         if let Some(ref context) = result.context {
+                        //             ui.add(egui::Label::new(RichText::new(context).color(egui::Color32::from_rgb(0, 128, 255))).wrap(false));
+                        //         }
+                        //     } else {
+                        //         ui.add(egui::Label::new(&result.name).wrap(false));
+                        //     };
+                        // }
 
-                    for e in self
-                        .searchholder
-                        .results
-                        .iter_nice(self.scrolling, self.config_lock.get().entries_around_cursor, self.config_lock.get().group_entries_while_unselected)
-                    {
-                        match e {
-                            NiceIter::NewSource(source) => {
-                                ui.horizontal(|ui| {
-                                    ui.add(egui::Label::new(source.pretty_name.clone()).wrap(false));
+                        for e in self
+                            .searchholder
+                            .results
+                            .iter_nice(self.scrolling, self.config_lock.get().entries_around_cursor, self.config_lock.get().group_entries_while_unselected)
+                        {
+                            match e {
+                                NiceIter::NewSource(source) => {
+                                    ui.horizontal(|ui| {
+                                        ui.add(egui::Label::new(source.pretty_name.clone()).wrap(false));
+                                        ui.separator();
+                                        ui.add(egui::Label::new(format!("{} Results", source.num_results)).wrap(false));
+                                    });
                                     ui.separator();
-                                    ui.add(egui::Label::new(format!("{} Results", source.num_results)).wrap(false));
-                                });
-                                ui.separator();
-                            }
-                            NiceIter::Result { result, cursor_on, index } => {
-                                let (short_title, title_truncated) = {
-                                    let mut title = result.title().to_string();
-                                    let mut truncated = false;
-                                    if title.len() > self.config_lock.get().truncate_title_length {
-                                        title.truncate(self.config_lock.get().truncate_title_length - 3);
-                                        title.push_str("...");
-                                        truncated = true;
-                                    }
-                                    (title, truncated)
-                                };
+                                }
+                                NiceIter::Result { result, cursor_on, index } => {
+                                    let (short_title, title_truncated) = {
+                                        let mut title = result.title().to_string();
+                                        let mut truncated = false;
+                                        if title.len() > self.config_lock.get().truncate_title_length {
+                                            title.truncate(self.config_lock.get().truncate_title_length - 3);
+                                            title.push_str("...");
+                                            truncated = true;
+                                        }
+                                        (title, truncated)
+                                    };
 
-                                let (short_context, context_truncated) = {
-                                    let mut context = result.context().to_string();
-                                    let mut truncated = false;
-                                    if context.len() > self.config_lock.get().truncate_context_length {
-                                        context.truncate(self.config_lock.get().truncate_context_length - 3);
-                                        context.push_str("...");
-                                        truncated = true;
-                                    }
-                                    (context, truncated)
-                                };
+                                    let (short_context, context_truncated) = {
+                                        let mut context = result.context().to_string();
+                                        let mut truncated = false;
+                                        if context.len() > self.config_lock.get().truncate_context_length {
+                                            context.truncate(self.config_lock.get().truncate_context_length - 3);
+                                            context.push_str("...");
+                                            truncated = true;
+                                        }
+                                        (context, truncated)
+                                    };
 
-                                if cursor_on {
-                                    ui.add(egui::Label::new(RichText::new(short_title).color(egui::Color32::LIGHT_BLUE)).wrap(false));
-                                    if !result.context().is_empty() {
-                                        ui.add(egui::Label::new(RichText::new(short_context).color(egui::Color32::from_rgb(0, 128, 255))).wrap(false));
-                                    }
-                                    if context_truncated || title_truncated {
-                                        // like the current result window but above the search bar
-                                        egui::Window::new("Full Result")
-                                            .title_bar(false)
-                                            // .fixed_pos(Pos2::new(midwindowx as f32, midwindowy as f32))
-                                            // .fixed_size(Vec2::new(400., 60.))
-                                            .resizable(false)
-                                            .pivot(egui::Align2::CENTER_BOTTOM)
-                                            .fixed_pos(egui::Pos2::new(midwindowx as f32, midwindowy as f32 - 30.))
-                                            .min_size(egui::Vec2::new(400., 60.))
-                                            // .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0., midwindowy as f32 - 30.))
-                                            .show(egui_context, |ui| {
-                                                if title_truncated {
-                                                    ui.add(egui::Label::new(RichText::new(result.title()).heading().color(egui::Color32::LIGHT_BLUE)).wrap(true));
-                                                }
-                                                if title_truncated && context_truncated {
-                                                    ui.separator();
-                                                }
-                                                if context_truncated {
-                                                    ui.add(egui::Label::new(RichText::new(result.context()).color(egui::Color32::from_rgb(0, 128, 255))).wrap(true));
-                                                }
-                                            });
-                                    }
-                                } else if self.scrolling {
-                                    ui.add(egui::Label::new(short_title).wrap(false));
-                                } else {
-                                    // i dont like inlining if statements if there are side effects
-                                    if ui.add_enabled(true, egui::Button::new(short_title).wrap(false).frame(false)).clicked() {
-                                        set_cursor_later = Some(index);
-                                    }
-                                };
+                                    if cursor_on {
+                                        ui.add(egui::Label::new(RichText::new(short_title).color(egui::Color32::LIGHT_BLUE)).wrap(false));
+                                        if !result.context().is_empty() {
+                                            ui.add(egui::Label::new(RichText::new(short_context).color(egui::Color32::from_rgb(0, 128, 255))).wrap(false));
+                                        }
+                                        if context_truncated || title_truncated {
+                                            // like the current result window but above the search bar
+                                            egui::Window::new("Full Result")
+                                                .title_bar(false)
+                                                // .fixed_pos(Pos2::new(midwindowx as f32, midwindowy as f32))
+                                                // .fixed_size(Vec2::new(400., 60.))
+                                                .resizable(false)
+                                                .pivot(egui::Align2::CENTER_BOTTOM)
+                                                .fixed_pos(egui::Pos2::new(
+                                                    midwindowx as f32,
+                                                    midwindowy as f32 - (barheight / 2.0) - self.config_lock.get().gap_between_search_bar_and_results,
+                                                ))
+                                                .min_size(egui::Vec2::new(400., 60.))
+                                                // .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0., midwindowy as f32 - 30.))
+                                                .show(egui_context, |ui| {
+                                                    if title_truncated {
+                                                        ui.add(egui::Label::new(RichText::new(result.title()).heading().color(egui::Color32::LIGHT_BLUE)).wrap(true));
+                                                    }
+                                                    if title_truncated && context_truncated {
+                                                        ui.separator();
+                                                    }
+                                                    if context_truncated {
+                                                        ui.add(egui::Label::new(RichText::new(result.context()).color(egui::Color32::from_rgb(0, 128, 255))).wrap(true));
+                                                    }
+                                                });
+                                        }
+                                    } else if self.scrolling {
+                                        ui.add(egui::Label::new(short_title).wrap(false));
+                                    } else {
+                                        // i dont like inlining if statements if there are side effects
+                                        if ui.add_enabled(true, egui::Button::new(short_title).wrap(false).frame(false)).clicked() {
+                                            set_cursor_later = Some(index);
+                                        }
+                                    };
+                                }
                             }
                         }
-                    }
 
-                    egui_context.used_size().x
-                });
-            if let Some(index) = set_cursor_later {
-                self.searchholder.results.raw_set_cursor(index);
-                self.scrolling = true;
+                        egui_context.used_size().x
+                    });
+                if let Some(index) = set_cursor_later {
+                    self.searchholder.results.raw_set_cursor(index);
+                    self.scrolling = true;
+                }
             }
         }
 
