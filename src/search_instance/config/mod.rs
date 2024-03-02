@@ -39,7 +39,7 @@ pub struct App<'a> {
 }
 
 struct BackLog {
-    log: Vec<LogMessage>,
+    log: Vec<(LogMessage, usize)>,
     max: usize,
 }
 
@@ -49,17 +49,19 @@ impl BackLog {
     }
 
     fn drain_global(&mut self) {
-        self.log.extend(LOGGER.get());
-        // sort by time, highest first (reverse order)
-        self.log.sort_by(|a, b| match b.time.cmp(&a.time) {
-            std::cmp::Ordering::Equal => match b.level.cmp(&a.level) {
-                std::cmp::Ordering::Equal => b.message.cmp(&a.message),
-                x => x,
-            },
-            x => x,
-        });
+        let mut highest = self.log.iter().map(|(_, i)| *i).max().unwrap_or(0);
+        self.log.extend(
+            LOGGER
+                .get()
+                .into_iter()
+                .map(|i| {
+                    highest += 1;
+                    (i, highest)
+                })
+                .collect::<Vec<_>>(),
+        );
+        self.log.sort_by(|a, b| a.1.cmp(&b.1));
         self.log.truncate(self.max);
-        self.log.reverse();
     }
 }
 
@@ -329,7 +331,7 @@ impl App<'_> {
             .max_height(360.0)
             .auto_shrink(true)
             .show(ui, |ui| {
-                for i in self.backlog.log.iter() {
+                for (i, _) in self.backlog.log.iter() {
                     show_log_message(ui, i, &self.showlogs, timezone);
                 }
             });
