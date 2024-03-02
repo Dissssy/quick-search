@@ -9,6 +9,7 @@ use config::ConfigLoader;
 use directories::ProjectDirs;
 use egui_overlay::egui_window_glfw_passthrough::glfw::PixelImage;
 use minwin::sync::Mutex as WinMutex;
+use quick_search_lib::Log;
 use std::{
     sync::{Arc, Mutex as StdMutex},
     thread::JoinHandle,
@@ -24,15 +25,16 @@ include_flate::flate!(pub static ICON_BYTES_128: [u8] from "assets/icon-128.png"
 lazy_static::lazy_static! {
     static ref DIRECTORY: ProjectDirs = ProjectDirs::from("com", "planet-51-devs", "quick-search").expect("Failed to get project directories");
     static ref CONFIG_FILE: Arc<ConfigLoader> = Arc::new(ConfigLoader::new());
+    static ref LOGGER: quick_search_lib::Logger = quick_search_lib::Logger::new(quick_search_lib::LogLevelOrCustom::from_min_level(quick_search_lib::LogLevel::Trace));
     static ref AUDIO_FILE_PATH: std::path::PathBuf = {
         let path = DIRECTORY.data_dir().join("notif.mp3");
         if !path.exists() {
             match std::fs::write(&path, &*AUDIO_FILE_BYTES) {
                 Ok(_) => {
-                    log::info!("Created notif.mp3");
+                    LOGGER.info("Created notif.mp3");
                 }
                 Err(e) => {
-                    log::error!("Failed to create notif.mp3: {}", e);
+                    LOGGER.error(&format!("Failed to create notif.mp3: {}", e));
                 }
             }
         }
@@ -65,32 +67,36 @@ fn to_pixel_image(bytes: &[u8]) -> PixelImage {
 
 fn main() {
     // setup logging
-    env_logger::init();
-    log::trace!("Logging initialized");
+    {
+        let cfg = (*CONFIG_FILE).lock();
+        (*LOGGER).set_log_level(cfg.get().log_level);
+    }
+
+    LOGGER.trace("Logging initialized");
 
     match std::fs::create_dir_all(DIRECTORY.config_dir()) {
         Ok(_) => {
-            log::info!("Created config directory");
+            LOGGER.info("Created config directory");
         }
         Err(e) => {
-            log::error!("Failed to create config directory: {}", e);
+            LOGGER.error(&format!("Failed to create config directory: {}", e));
             return;
         }
     };
     match std::fs::create_dir_all(DIRECTORY.data_dir().join("plugins")) {
         Ok(_) => {
-            log::info!("Created plugins directory");
+            LOGGER.info("Created plugins directory");
         }
         Err(e) => {
-            log::error!("Failed to create plugins directory: {}", e);
+            LOGGER.error(&format!("Failed to create plugins directory: {}", e));
             return;
         }
     };
 
     // ensure the exe is being run from the correct path, if not, copy it to the correct path and prompt the user to run it from there, then exit
 
-    log::info!("Exe path: {:?}", *CURRENT_PATH);
-    log::info!("Correct path: {:?}", *CORRECT_PATH);
+    LOGGER.info(&format!("Exe path: {:?}", *CURRENT_PATH));
+    LOGGER.info(&format!("Correct path: {:?}", *CORRECT_PATH));
 
     #[cfg(not(feature = "debug"))]
     if *CURRENT_PATH != *CORRECT_PATH {
@@ -103,13 +109,13 @@ fn main() {
             .show();
 
         if res == rfd::MessageDialogResult::Yes {
-            log::info!("User chose yes");
+            LOGGER.info("User chose yes");
             match std::fs::copy(&*CURRENT_PATH, &*CORRECT_PATH) {
                 Ok(_) => {
-                    log::info!("Copied exe to correct path");
+                    LOGGER.info("Copied exe to correct path");
                 }
                 Err(e) => {
-                    log::error!("Failed to copy exe to correct path: {}", e);
+                    LOGGER.error(&format!("Failed to copy exe to correct path: {}", e));
                     return;
                 }
             };
@@ -120,15 +126,15 @@ fn main() {
                 .spawn()
             {
                 // Ok(mut handle) => {
-                //     log::info!("Spawned correct exe");
+                //     LOGGER.info("Spawned correct exe");
                 //     let (kill, kill_rx) = crossbeam::channel::unbounded::<bool>();
                 //     ctrlc::set_handler(move || {
                 //         match kill.send(true) {
                 //             Ok(_) => {
-                //                 log::info!("Sent kill signal to correct exe");
+                //                 LOGGER.info("Sent kill signal to correct exe");
                 //             }
                 //             Err(_) => {
-                //                 log::error!("Failed to send kill signal to correct exe");
+                //                 LOGGER.error("Failed to send kill signal to correct exe");
                 //             }
                 //         };
                 //     })
@@ -139,10 +145,10 @@ fn main() {
                 //     handle.kill().expect("Failed to kill correct exe");
                 // }
                 Ok(_) => {
-                    log::info!("Spawned correct exe");
+                    LOGGER.info("Spawned correct exe");
                 }
                 Err(e) => {
-                    log::error!("Failed to spawn correct exe: {}", e);
+                    LOGGER.error(&format!("Failed to spawn correct exe: {}", e));
                 }
             };
             return;
@@ -152,20 +158,20 @@ fn main() {
     search_instance::preload();
 
     // privelege level, its debugging stuff
-    // search::set_clipboard(format!("privelege level: {:?}\nis_elevated: {}", privilege_level::privilege_level(), is_elevated::is_elevated()).as_str());
+    // search::set_clipboard(format("privelege level: {:?}\nis_elevated: {}", privilege_level::privilege_level(), is_elevated::is_elevated()).as_str());
 
     // listen for F17 keypress from the keyboard
     let mut hkm = HotkeyManager::new();
-    log::trace!("Hotkey manager created");
+    LOGGER.trace("Hotkey manager created");
 
     // Acquiring a windows mutex to ensure only one instance of the software is running, we also use this mutex to lock and ensure only one thread can ever possibly run at a time
     let software_lock = Arc::new(match WinMutex::create_named("Dissy-Quick-search") {
         Ok(lock) => {
-            log::trace!("Software lock acquired");
+            LOGGER.trace("Software lock acquired");
             lock
         }
         Err(e) => {
-            log::error!("Failed to acquire software lock: {}", e);
+            LOGGER.error(&format!("Failed to acquire software lock: {}", e));
             return;
         }
     });
@@ -175,21 +181,21 @@ fn main() {
     {
         let ui_opener = ui_opener.clone();
         match hkm.register(Key::F17, &[], move || {
-            log::trace!("F17 pressed!");
+            LOGGER.trace("F17 pressed!");
             match ui_opener.send(true) {
                 Ok(_) => {
-                    log::info!("Sent UI opener signal");
+                    LOGGER.info("Sent UI opener signal");
                 }
                 Err(e) => {
-                    log::error!("Failed to send UI opener signal: {}", e);
+                    LOGGER.error(&format!("Failed to send UI opener signal: {}", e));
                 }
             };
         }) {
             Ok(_) => {
-                log::info!("F17 hotkey registered");
+                LOGGER.info("F17 hotkey registered");
             }
             Err(e) => {
-                log::error!("Failed to register F17 hotkey: {}", e);
+                LOGGER.error(&format!("Failed to register F17 hotkey: {}", e));
                 return;
             }
         };
@@ -199,7 +205,7 @@ fn main() {
 
     let ui_opening_thread = {
         let thread: Arc<StdMutex<Option<JoinHandle<()>>>> = Arc::new(StdMutex::new(None));
-        log::trace!("Thread mutex created");
+        LOGGER.trace("Thread mutex created");
         let ui_signal = ui_signal;
         let kill_ui_rx = kill_ui_rx;
 
@@ -207,37 +213,37 @@ fn main() {
             loop {
                 crossbeam::select! {
                     recv(kill_ui_rx) -> _ => {
-                        log::trace!("Received kill signal");
+                        LOGGER.trace("Received kill signal");
                         break
                     }
                     recv(ui_signal) -> msg => {
                         let regular = match msg {
                             Ok(val) => val,
                             Err(e) => {
-                                log::error!("Failed to receive UI opener signal: {}", e);
+                                LOGGER.error(&format!("Failed to receive UI opener signal: {}", e));
                                 continue;
                             }
                         };
-                        log::trace!("Received UI opener signal");
+                        LOGGER.trace("Received UI opener signal");
                         match thread.lock() {
                             Ok(mut threadopt) => {
-                                log::trace!("Thread mutex locked");
+                                LOGGER.trace("Thread mutex locked");
                                 if threadopt.as_ref().map(|x| x.is_finished()).unwrap_or(true) {
-                                    log::trace!("Thread is not running");
+                                    LOGGER.trace("Thread is not running");
                                     *threadopt = Some(std::thread::spawn(move || search_instance::instance(regular)));
-                                    log::trace!("Thread spawned");
+                                    LOGGER.trace("Thread spawned");
                                 } else {
-                                    log::warn!("Thread is already running");
+                                    LOGGER.warn("Thread is already running");
                                 }
                             }
                             Err(e) => {
-                                log::error!("Failed to lock thread mutex: {}", e);
+                                LOGGER.error(&format!("Failed to lock thread mutex: {}", e));
                             }
                         };
                     }
                 }
             }
-            log::trace!("UI opening thread done");
+            LOGGER.trace("UI opening thread done");
         })
     };
 
@@ -248,13 +254,13 @@ fn main() {
         let kill = kill.clone();
         std::thread::spawn(move || {
             hkm.event_loop();
-            log::trace!("Hotkey manager event loop finished");
+            LOGGER.trace("Hotkey manager event loop finished");
             match kill.send(true) {
                 Ok(_) => {
-                    log::info!("Hotkey manager event loop finished");
+                    LOGGER.info("Hotkey manager event loop finished");
                 }
                 Err(_) => {
-                    log::error!("Failed to send kill signal to hotkey manager event loop");
+                    LOGGER.error("Failed to send kill signal to hotkey manager event loop");
                 }
             };
         })
@@ -264,26 +270,26 @@ fn main() {
     {
         let kill = kill.clone();
         match ctrlc::set_handler(move || {
-            log::info!("Received SIGINT, exiting");
+            LOGGER.info("Received SIGINT, exiting");
             match kill.send(true) {
                 Ok(_) => {
-                    log::info!("Sent kill signal to hotkey manager event loop");
+                    LOGGER.info("Sent kill signal to hotkey manager event loop");
                 }
                 Err(_) => {
-                    log::error!("Failed to send kill signal to hotkey manager event loop");
+                    LOGGER.error("Failed to send kill signal to hotkey manager event loop");
                 }
             };
         }) {
             Ok(_) => {
-                log::info!("SIGINT handler set");
+                LOGGER.info("SIGINT handler set");
             }
             Err(e) => {
-                log::error!("Failed to set SIGINT handler: {}", e);
+                LOGGER.error(&format!("Failed to set SIGINT handler: {}", e));
             }
         }
     }
 
-    log::trace!("Hotkey manager thread spawned");
+    LOGGER.trace("Hotkey manager thread spawned");
 
     let (kill_tray_icon, kill_tray_icon_rx) = crossbeam::channel::unbounded::<bool>();
 
@@ -292,10 +298,10 @@ fn main() {
     // wait for the kill signal or a sigterm or sigint
     match kill_rx.recv() {
         Ok(_) => {
-            log::info!("Received kill signal");
+            LOGGER.info("Received kill signal");
         }
         Err(_) => {
-            log::error!("Failed to receive kill signal");
+            LOGGER.error("Failed to receive kill signal");
         }
     };
 
@@ -303,50 +309,50 @@ fn main() {
 
     match kill_ui.send(true) {
         Ok(_) => {
-            log::info!("Sent kill signal to UI opening thread");
+            LOGGER.info("Sent kill signal to UI opening thread");
         }
         Err(_) => {
-            log::error!("Failed to send kill signal to UI opening thread");
+            LOGGER.error("Failed to send kill signal to UI opening thread");
         }
     };
 
     match ui_opening_thread.join() {
         Ok(_) => {
-            log::info!("UI opening thread finished");
+            LOGGER.info("UI opening thread finished");
         }
         Err(_) => {
-            log::error!("Failed to join UI opening thread");
+            LOGGER.error("Failed to join UI opening thread");
         }
     };
 
     match hkm_thread.join() {
         Ok(_) => {
-            log::info!("Hotkey manager thread finished");
+            LOGGER.info("Hotkey manager thread finished");
         }
         Err(_) => {
-            log::error!("Failed to join hotkey manager thread");
+            LOGGER.error("Failed to join hotkey manager thread");
         }
     };
 
     match kill_tray_icon.send(true) {
         Ok(_) => {
-            log::info!("Sent kill signal to tray icon thread");
+            LOGGER.info("Sent kill signal to tray icon thread");
         }
         Err(_) => {
-            log::error!("Failed to send kill signal to tray icon thread");
+            LOGGER.error("Failed to send kill signal to tray icon thread");
         }
     };
 
     match tray_icon_thread.join() {
         Ok(_) => {
-            log::info!("Tray icon thread finished");
+            LOGGER.info("Tray icon thread finished");
         }
         Err(_) => {
-            log::error!("Failed to join tray icon thread");
+            LOGGER.error("Failed to join tray icon thread");
         }
     };
 
-    log::info!("Exiting");
+    LOGGER.info("Exiting");
     drop(software_lock);
 }
 

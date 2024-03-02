@@ -2,6 +2,9 @@ use std::rc::Rc;
 
 use quick_search_lib::{PluginId, SearchResult};
 
+use crate::LOGGER;
+use quick_search_lib::Log;
+
 use crate::search_instance::SearchMetadata;
 
 #[derive(Default)]
@@ -112,7 +115,7 @@ impl ResultHolder {
                 // once we cross self.cursor for i, we can break
 
                 if y == 0 && break_next {
-                    log::trace!("breaking at {}", i);
+                    LOGGER.trace(&format!("breaking at {}", i));
                     cursor = Some(i);
                     break;
                 }

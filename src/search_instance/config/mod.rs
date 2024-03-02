@@ -2,11 +2,17 @@ use std::{collections::HashMap, str::FromStr};
 
 use egui::{Button, Color32, Label, RichText};
 use egui_extras::{Column, TableBuilder};
-use quick_search_lib::abi_stable::{std_types::RString, traits::IntoReprRust};
+use quick_search_lib::{
+    abi_stable::{std_types::RString, traits::IntoReprRust},
+    LogLevelOrCustom, LogMessage,
+};
 
 use crate::config::{ConfigLock, PluginConfig};
 
 use super::PluginLoadResult;
+
+use crate::LOGGER;
+use quick_search_lib::Log;
 
 pub struct App<'a> {
     config_lock: ConfigLock<'a>,
@@ -28,6 +34,33 @@ pub struct App<'a> {
     tz_search_string: String,
     current_tab: Tabs,
     config_backup: Option<crate::config::Config>,
+    backlog: BackLog,
+    showlogs: u8,
+}
+
+struct BackLog {
+    log: Vec<LogMessage>,
+    max: usize,
+}
+
+impl BackLog {
+    fn new(max: usize) -> Self {
+        Self { log: Vec::new(), max }
+    }
+
+    fn drain_global(&mut self) {
+        self.log.extend(LOGGER.get());
+        // sort by time, highest first (reverse order)
+        self.log.sort_by(|a, b| match b.time.cmp(&a.time) {
+            std::cmp::Ordering::Equal => match b.level.cmp(&a.level) {
+                std::cmp::Ordering::Equal => b.message.cmp(&a.message),
+                x => x,
+            },
+            x => x,
+        });
+        self.log.truncate(self.max);
+        self.log.reverse();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,6 +131,14 @@ impl App<'_> {
             }
         };
 
+        let mut backlog = BackLog::new(config_lock.get().max_log_size);
+        backlog.drain_global();
+
+        let showlogs = match config_lock.get().log_level {
+            LogLevelOrCustom::LogLevel(l) => l as u8,
+            LogLevelOrCustom::Custom(l) => l.mask(),
+        };
+
         Self {
             config_backup: Some(config_lock.get().clone()),
             no_plugins_including_missing: states.iter().filter(|(name, _)| !loadresults.missing.contains(name)).count() == 0,
@@ -117,6 +158,8 @@ impl App<'_> {
             autolaunchinfo,
             tz_search_string: String::new(),
             current_tab: Tabs::General,
+            backlog,
+            showlogs,
         }
     }
 
@@ -148,13 +191,13 @@ impl App<'_> {
                     if autolaunchinfo.enabled {
                         if let Err(e) = autolaunchinfo.autolaunch.enable() {
                             let error = format!("failed to enable autolaunch: {}", e);
-                            log::error!("{}", error);
+                            LOGGER.error(&error);
                             autolaunchinfo.error = Some(error);
                             autolaunchinfo.enabled = false;
                         };
                     } else if let Err(e) = autolaunchinfo.autolaunch.disable() {
                         let error = format!("failed to disable autolaunch: {}", e);
-                        log::error!("{}", error);
+                        LOGGER.error(&error);
                         autolaunchinfo.enabled = true;
                     }
                 }
@@ -257,7 +300,39 @@ impl App<'_> {
     fn debug_tab(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Debug");
+            ui.separator();
+            if ui.add(egui::SelectableLabel::new(self.showlogs & 0b00001 != 0, "Trace")).on_hover_text("Show trace logs").clicked() {
+                self.showlogs ^= 0b00001;
+            }
+            ui.separator();
+            if ui.add(egui::SelectableLabel::new(self.showlogs & 0b00010 != 0, "Debug")).on_hover_text("Show debug logs").clicked() {
+                self.showlogs ^= 0b00010;
+            }
+            ui.separator();
+            if ui.add(egui::SelectableLabel::new(self.showlogs & 0b00100 != 0, "Info")).on_hover_text("Show info logs").clicked() {
+                self.showlogs ^= 0b00100;
+            }
+            ui.separator();
+            if ui.add(egui::SelectableLabel::new(self.showlogs & 0b01000 != 0, "Warn")).on_hover_text("Show warn logs").clicked() {
+                self.showlogs ^= 0b01000;
+            }
+            ui.separator();
+            if ui.add(egui::SelectableLabel::new(self.showlogs & 0b10000 != 0, "Error")).on_hover_text("Show error logs").clicked() {
+                self.showlogs ^= 0b10000;
+            }
         });
+        ui.separator();
+        let timezone = self.config_lock.get().timezone;
+        egui::ScrollArea::both()
+            .stick_to_bottom(true)
+            .max_width(ui.available_width())
+            .max_height(360.0)
+            .auto_shrink(true)
+            .show(ui, |ui| {
+                for i in self.backlog.log.iter() {
+                    show_log_message(ui, i, &self.showlogs, timezone);
+                }
+            });
     }
 
     fn show_states(&mut self, body: &mut egui_extras::TableBody<'_>, midwindowx: i32, midwindowy: i32, egui_context: &egui::Context) {
@@ -278,7 +353,7 @@ impl App<'_> {
                                         .on_hover_text("Plugin has extra configurations")
                                         .clicked()
                                     {
-                                        log::trace!("Close menu for {}", i);
+                                        LOGGER.trace(&format!("Close menu for {}", i));
                                         self.menu_open_for = None;
                                     }
 
@@ -293,7 +368,7 @@ impl App<'_> {
                                         .on_hover_text("Plugin has extra configurations")
                                         .clicked()
                                     {
-                                        log::trace!("Open menu for {}", i);
+                                        LOGGER.trace(&format!("Open menu for {}", i));
                                         self.menu_open_for = Some(i);
                                     }
                                 }
@@ -377,6 +452,78 @@ impl App<'_> {
     }
 }
 
+fn show_log_message(ui: &mut egui::Ui, i: &LogMessage, show_bits: &u8, timezone: chrono_tz::Tz) {
+    let color = match i.level {
+        quick_search_lib::LogLevel::Trace => {
+            if show_bits & 0b00001 == 0 {
+                return;
+            }
+            Color32::from_rgb(127, 127, 127)
+        }
+        quick_search_lib::LogLevel::Debug => {
+            if show_bits & 0b00010 == 0 {
+                return;
+            }
+            Color32::from_rgb(127, 127, 255)
+        }
+        quick_search_lib::LogLevel::Info => {
+            if show_bits & 0b00100 == 0 {
+                return;
+            }
+            Color32::from_rgb(127, 255, 127)
+        }
+        quick_search_lib::LogLevel::Warn => {
+            if show_bits & 0b01000 == 0 {
+                return;
+            }
+            Color32::from_rgb(255, 255, 127)
+        }
+        quick_search_lib::LogLevel::Error => {
+            if show_bits & 0b10000 == 0 {
+                return;
+            }
+            Color32::from_rgb(255, 127, 127)
+        }
+    };
+    ui.separator();
+    let multiline = i.message.contains('\n');
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(
+                chrono::NaiveDateTime::from_timestamp_millis(i.time.get() as i64)
+                    .and_then(|d| {
+                        match d.and_local_timezone(timezone) {
+                            chrono::LocalResult::Ambiguous(v, _) => Some(v),
+                            chrono::LocalResult::Single(v) => Some(v),
+                            _ => None,
+                        }
+                        .map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
+                    })
+                    .unwrap_or("Invalid time".to_owned()),
+            )
+            .color(color),
+        )
+        .on_hover_text(i.source.as_str());
+        ui.separator();
+        ui.label(match i.level {
+            quick_search_lib::LogLevel::Trace => "TRACE",
+            quick_search_lib::LogLevel::Debug => "DEBUG",
+            quick_search_lib::LogLevel::Info => "INFO",
+            quick_search_lib::LogLevel::Warn => "WARN",
+            quick_search_lib::LogLevel::Error => "ERROR",
+        })
+        .on_hover_text(i.source.as_str());
+        ui.separator();
+        if !multiline {
+            ui.label(i.message.as_str()).on_hover_text(i.source.as_str());
+        }
+    });
+    if multiline {
+        ui.separator();
+        ui.label(i.message.as_str()).on_hover_text(i.source.as_str());
+    }
+}
+
 struct AutoLaunchInfo {
     enabled: bool,
     error: Option<String>,
@@ -390,12 +537,13 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
         _default_gfx_backend: &mut egui_overlay::egui_render_three_d::ThreeDBackend,
         glfw_backend: &mut egui_overlay::egui_window_glfw_passthrough::GlfwBackend,
     ) {
+        self.backlog.drain_global();
         if self.size.is_none() {
             glfw_backend.glfw.with_connected_monitors(|_glfw, monitors| {
                 let monitor = monitors.first();
                 match monitor {
                     None => {
-                        log::error!("no monitor");
+                        LOGGER.error("no monitor");
                     }
                     Some(monitor) => {
                         glfw_backend.window.show();
@@ -408,7 +556,7 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                             let mut window_title = [0u16; 1024];
                             let len = winapi::um::winuser::GetWindowTextW(current, window_title.as_mut_ptr(), window_title.len() as i32);
                             let current_name = String::from_utf16_lossy(&window_title[..len as usize]);
-                            log::info!("current window: {}", current_name);
+                            LOGGER.info(&format!("current window: {}", current_name));
                             current_name
                         };
 
@@ -417,7 +565,7 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                         }
 
                         let (x1, y1, x2, y2) = monitor.get_workarea();
-                        log::info!("monitor workarea: {}x{} {}x{}", x1, y1, x2, y2);
+                        LOGGER.info(&format!("monitor workarea: {}x{} {}x{}", x1, y1, x2, y2));
                         self.size = Some(egui::Vec2::new(x2 as f32, y2 as f32));
                     }
                 }
@@ -445,7 +593,7 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
 
             egui::Window::new("Config")
                 .title_bar(false)
-                .resizable(false)
+                .resizable(self.current_tab == Tabs::Debug)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::new(0., 0.))
                 .show(egui_context, |ui| {
                     ui.horizontal(|ui| {
@@ -536,6 +684,8 @@ impl<'a> egui_overlay::EguiOverlay for App<'a> {
                 glfw_backend.window.set_should_close(true);
             }
             CloseState::CloseSave => {
+                self.config_lock.get_mut().log_level = LogLevelOrCustom::Custom(quick_search_lib::LogLevelBitmask::from_mask(self.showlogs));
+                LOGGER.set_log_level(self.config_lock.get().log_level);
                 self.config_lock.get_mut().plugin_states = self.states.clone().into_iter().collect::<HashMap<String, PluginConfig>>();
                 glfw_backend.window.set_should_close(true);
             }

@@ -3,6 +3,9 @@ use std::{
     sync::Mutex,
 };
 
+use crate::LOGGER;
+use quick_search_lib::Log;
+
 use serde::{Deserialize, Serialize, Serializer};
 
 pub struct ConfigLoader {
@@ -12,15 +15,15 @@ pub struct ConfigLoader {
 impl ConfigLoader {
     pub fn new() -> Self {
         // let file = super::DIRECTORY.config_dir().join("config.toml");
-        // log::trace!("config file: {:?}", file);
+        // LOGGER.trace("config file: {:?}", file);
         // let config_file = match std::fs::OpenOptions::new().read(true).write(true).create(true).open(&file) {
         //     Ok(config_file) => {
-        //         log::info!("Opened config file");
+        //         LOGGER.info("Opened config file");
         //         config_file
         //     }
         //     Err(e) => {
-        //         log::error!("Failed to open config file: {}", e);
-        //         panic!("Failed to open config file: {}", e);
+        //         LOGGER.error("Failed to open config file: {}", e);
+        //         panic("Failed to open config file: {}", e);
         //     }
         // };
         ConfigLoader { lock: Mutex::new(()) }
@@ -29,7 +32,7 @@ impl ConfigLoader {
     pub fn lock(&self) -> ConfigLock<'_> {
         let lock = match self.lock.lock() {
             Ok(lock) => {
-                log::info!("Locked config file");
+                LOGGER.info("Locked config file");
                 lock
             }
             Err(e) => e.into_inner(),
@@ -62,11 +65,11 @@ impl ConfigLock<'_> {
 impl Drop for ConfigLock<'_> {
     fn drop(&mut self) {
         if self.modified {
-            log::trace!("config file modified");
+            LOGGER.trace("config file modified");
             self.config.save();
-            log::info!("config file saved");
+            LOGGER.info("config file saved");
         } else {
-            log::info!("config file unmodified");
+            LOGGER.info("config file unmodified");
         }
         drop(self.lock.take())
     }
@@ -90,6 +93,8 @@ pub struct Config {
     pub chrono_format_string: String,
     pub time_font_size: f32,
     pub clock_enabled: bool,
+    pub log_level: quick_search_lib::LogLevelOrCustom,
+    pub max_log_size: usize,
 }
 
 fn ordered_map<S, K: Ord + Serialize, V: Serialize>(value: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
@@ -103,31 +108,31 @@ where
 impl Config {
     pub fn load() -> Self {
         let file = super::DIRECTORY.config_dir().join("config.toml");
-        log::trace!("config file: {:?}", file);
+        LOGGER.trace(&format!("config file: {:?}", file));
         let config = match std::fs::read_to_string(&file) {
             Ok(config) => {
-                log::info!("Loaded config file");
+                LOGGER.info("Loaded config file");
                 config
             }
             Err(e) => {
-                log::error!("Failed to load config file: {}", e);
+                LOGGER.error(&format!("Failed to load config file: {}", e));
                 String::new()
             }
         };
 
         let config: PossibleConfig = match toml::from_str(&config) {
             Ok(config) => {
-                log::info!("Parsed config file");
+                LOGGER.info("Parsed config file");
                 config
             }
             Err(e) => {
-                log::error!("Failed to parse config file: {} renaming and generating new one.", e);
+                LOGGER.error(&format!("Failed to parse config file: {} renaming and generating new one.", e));
                 match std::fs::rename(&file, file.with_extension("toml.bak")) {
                     Ok(_) => {
-                        log::info!("Renamed config file");
+                        LOGGER.info("Renamed config file");
                     }
                     Err(e) => {
-                        log::error!("Failed to rename config file: {}", e);
+                        LOGGER.error(&format!("Failed to rename config file: {}", e));
                     }
                 };
                 PossibleConfig::default()
@@ -164,30 +169,30 @@ impl Config {
         // verify the format string is valid
         for item in chrono::format::StrftimeItems::new(&self.chrono_format_string) {
             if let chrono::format::Item::Error = item {
-                log::error!("Invalid chrono format string: {}", self.chrono_format_string);
+                LOGGER.error(&format!("Invalid chrono format string: {}", self.chrono_format_string));
                 self.chrono_format_string = "%Y-%m-%d %H:%M:%S".to_string();
                 break;
             }
         }
         let file = super::DIRECTORY.config_dir().join("config.toml");
-        log::trace!("config file: {:?}", file);
+        LOGGER.trace(&format!("config file: {:?}", file));
         let config = match toml::to_string(&self) {
             Ok(config) => {
-                log::info!("Serialized config");
+                LOGGER.info("Serialized config");
                 config
             }
             Err(e) => {
-                log::error!("Failed to serialize config: {}", e);
+                LOGGER.error(&format!("Failed to serialize config: {}", e));
                 return;
             }
         };
 
         match std::fs::write(&file, config) {
             Ok(_) => {
-                log::info!("Wrote config file");
+                LOGGER.info("Wrote config file");
             }
             Err(e) => {
-                log::error!("Failed to write config file: {}", e);
+                LOGGER.error(&format!("Failed to write config file: {}", e));
             }
         };
     }
@@ -233,6 +238,10 @@ struct PossibleConfig {
     time_font_size: Option<f32>,
     #[serde(default)]
     clock_enabled: Option<bool>,
+    #[serde(default)]
+    log_level: Option<quick_search_lib::LogLevelOrCustom>,
+    #[serde(default)]
+    max_log_size: Option<usize>,
 }
 
 impl From<PossibleConfig> for Config {
@@ -253,6 +262,8 @@ impl From<PossibleConfig> for Config {
             chrono_format_string: config.chrono_format_string.unwrap_or_else(|| "%Y-%m-%d %H:%M:%S".to_string()),
             time_font_size: config.time_font_size.unwrap_or(20.0),
             clock_enabled: config.clock_enabled.unwrap_or(true),
+            log_level: config.log_level.unwrap_or(quick_search_lib::LogLevelOrCustom::from_min_level(quick_search_lib::LogLevel::Error)),
+            max_log_size: config.max_log_size.unwrap_or(1024),
         }
     }
 }

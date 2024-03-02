@@ -16,8 +16,8 @@ windows-hotkeys = "0.2.1"
 minwin = { git = "https://github.com/Jascha-N/minwin-rs" }
 directories = "5.0.1"
 lazy_static = "1.4.0"
-log = "0.4.20"
-env_logger = "0.11.2"
+# log = "0.4.20"
+# env_logger = "0.11.2"
 serde = { version = "1.0.197", features = ["derive"] }
 toml = { version = "0.8.10", features = ["preserve_order"] }
 ctrlc = "3.4.2"

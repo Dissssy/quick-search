@@ -7,6 +7,9 @@ use crate::config::ConfigLock;
 
 use self::holder::NiceIter;
 
+use crate::LOGGER;
+use quick_search_lib::Log;
+
 use super::{PluginLoadResult, SearchMetadata};
 use holder::ResultHolder;
 
@@ -81,7 +84,7 @@ impl App<'_> {
     //     self.oldhandles = newoldhandles;
 
     //     if self.oldhandles.len() > 32 {
-    //         log::error!("oldhandles is too big! not spawning new thread until it is cleared");
+    //         LOGGER.error("oldhandles is too big! not spawning new thread until it is cleared");
     //         return Ok(());
     //     }
 
@@ -163,17 +166,17 @@ impl egui_overlay::EguiOverlay for App<'_> {
                 let monitor = monitors.first();
                 match monitor {
                     None => {
-                        log::error!("no monitor");
+                        LOGGER.error("no monitor");
                     }
                     Some(monitor) => {
                         // this code will literally only run once so we're gonna also request focus
                         // unsafe {
                         //     let window_ptr = egui_overlay::egui_window_glfw_passthrough::glfw::Context::window_ptr(&glfw_backend.window);
-                        //     log::!("window_ptr: {:p}", window_ptr);
-                        //     log::!("null: {}", window_ptr.is_null());
+                        //     LOGGER.!("window_ptr: {:p}", window_ptr);
+                        //     LOGGER.!("null: {}", window_ptr.is_null());
                         //     if !window_ptr.is_null() {
                         //         let r = SetForegroundWindow(std::mem::transmute(window_ptr));
-                        //         log::!("setforegroundwindow: {}", r);
+                        //         LOGGER.!("setforegroundwindow: {}", r);
                         //     }
                         // }
                         // std::thread::sleep(std::time::Duration::from_millis(100));
@@ -191,7 +194,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                             let mut window_title = [0u16; 1024];
                             let len = winapi::um::winuser::GetWindowTextW(current, window_title.as_mut_ptr(), window_title.len() as i32);
                             let current_name = String::from_utf16_lossy(&window_title[..len as usize]);
-                            log::info!("current window: {}", current_name);
+                            LOGGER.info(&format!("current window: {}", current_name));
                             current_name
                         };
 
@@ -205,18 +208,18 @@ impl egui_overlay::EguiOverlay for App<'_> {
 
                         // let (x, y) = monitor.get_physical_size();
                         // let (sx, sy) = monitor.get_content_scale();
-                        // log::!("monitor size: {}x{}", x, y);
-                        // log::!("monitor scale: {}x{}", sx, sy);
+                        // LOGGER.!("monitor size: {}x{}", x, y);
+                        // LOGGER.!("monitor scale: {}x{}", sx, sy);
                         // *v = Some(Vec2::new(x as f32, y as f32));
 
                         // if let Some(mode) = monitor.get_video_mode() {
                         //     let (x, y) = (mode.width, mode.height);
-                        //     log::!("monitor size: {}x{}", x, y);
+                        //     LOGGER.!("monitor size: {}x{}", x, y);
                         //     *v = Some(Vec2::new(x as f32, y as f32));
                         // } // THIS SCREWED UP MY MONITOR LOL
 
                         let (x1, y1, x2, y2) = monitor.get_workarea();
-                        log::info!("monitor workarea: {}x{} {}x{}", x1, y1, x2, y2);
+                        LOGGER.info(&format!("monitor workarea: {}x{} {}x{}", x1, y1, x2, y2));
                         self.size = Some(egui::Vec2::new(x2 as f32, y2 as f32));
                     }
                 }
@@ -293,9 +296,9 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     self.searchholder.dispatch(&self.config_lock, &self.input);
 
                     if r.changed() {
-                        // log::!("input changed!");
+                        // LOGGER.!("input changed!");
                         // if let Err(e) = self.try_dispatch_search() {
-                        //     log::!("error: {}", e);
+                        //     LOGGER.!("error: {}", e);
                         // }
                         // self.last_changed = Some(std::time::Instant::now());
                         self.searchholder.input_changed();
@@ -305,16 +308,16 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     // } else if let Some(changed) = self.last_changed {
                     //     // if it has been x ms since the last change, then dispatch the search and set last_changed to None
                     //     if std::time::Instant::now().duration_since(changed).as_millis() >= self.config_lock.get().total_search_delay as u128 {
-                    //         log::trace!("input not changed, dispatching search!");
+                    //         LOGGER.trace("input not changed, dispatching search!");
                     //         if let Err(e) = self.try_dispatch_search() {
-                    //             log::error!("error: {}", e);
+                    //             LOGGER.error("error: {}", e);
                     //         }
                     //         self.last_changed = None;
                     //     }
                     // }
 
                     if egui_context.input(|i| i.key_pressed(egui::Key::ArrowDown)) || (egui_context.input(|i| i.raw_scroll_delta.y < 0.0) && self.scrolling) {
-                        log::trace!("arrow down pressed!");
+                        LOGGER.trace("arrow down pressed!");
 
                         if self.doubledown {
                             self.doubledown = false;
@@ -337,7 +340,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     }
 
                     if egui_context.input(|i| i.key_pressed(egui::Key::ArrowUp)) || (egui_context.input(|i| i.raw_scroll_delta.y > 0.0) && self.scrolling) {
-                        log::trace!("arrow up pressed!");
+                        LOGGER.trace("arrow up pressed!");
 
                         if self.doubleup {
                             self.doubleup = false;
@@ -361,19 +364,19 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     }
 
                     if egui_context.input(|i| i.key_pressed(egui::Key::PageUp)) {
-                        log::trace!("page up pressed!");
+                        LOGGER.trace("page up pressed!");
                         self.searchholder.results.jump_backward(self.scrolling);
                         self.scrolling = true;
                     }
 
                     if egui_context.input(|i| i.key_pressed(egui::Key::PageDown)) {
-                        log::trace!("page down pressed!");
+                        LOGGER.trace("page down pressed!");
                         self.searchholder.results.jump_forward(self.scrolling);
                         self.scrolling = true;
                     }
 
                     if egui_context.input(|i| i.key_pressed(egui::Key::Tab)) {
-                        log::trace!("Tab pressed!");
+                        LOGGER.trace("Tab pressed!");
                         self.scrolling = !self.scrolling;
                         if self.scrolling {
                             // self.index = 0;
@@ -384,7 +387,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     }
 
                     if egui_context.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        log::trace!("enter pressed!");
+                        LOGGER.trace("enter pressed!");
 
                         if !self.scrolling {
                             // if the text lost focus, we should switch to scrolling mode
@@ -408,7 +411,7 @@ impl egui_overlay::EguiOverlay for App<'_> {
                     }
 
                     if egui_context.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        log::trace!("escape pressed!");
+                        LOGGER.trace("escape pressed!");
                         // close the window
                         glfw_backend.window.set_should_close(true);
                     };
@@ -645,7 +648,7 @@ impl SearchHolder {
             for plugin in self.loadresults.plugins.iter() {
                 // if it has been long enough since the last change, and the search has not been dispatched, then dispatch the search
                 if (config.get_plugin(plugin.name).map(|p| p.delay).unwrap_or(100) as u128) < time_since_last_change && !self.dispatched_searches.contains(plugin.name) {
-                    log::trace!("dispatching search for {} after {}ms", plugin.name, time_since_last_change);
+                    LOGGER.trace(&format!("dispatching search for {} after {}ms", plugin.name, time_since_last_change));
                     self.joinhandles.push(plugin.search_delayed(input));
                     self.dispatched_searches.insert(plugin.name.to_string());
                 }
@@ -657,12 +660,12 @@ impl SearchHolder {
         for handle in self.joinhandles.drain(..) {
             if handle.is_finished() {
                 if let Ok((r, m)) = handle.join() {
-                    log::trace!("search thread finished for {} with {} results", m.raw_name, r.len());
+                    LOGGER.trace(&format!("search thread finished for {} with {} results", m.raw_name, r.len()));
                     if !r.is_empty() {
                         self.results.add_results(r, m);
                     }
                 } else {
-                    log::error!("search thread failed");
+                    LOGGER.error("search thread failed");
                 }
             } else {
                 newhandles.push(handle);

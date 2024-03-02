@@ -1,6 +1,10 @@
 mod app;
 mod config;
+use std::sync::Arc;
 use std::{collections::HashSet, thread::JoinHandle};
+
+use crate::LOGGER;
+use quick_search_lib::Log;
 
 use quick_search_lib::{ColoredChar, Searchable_TO};
 
@@ -27,20 +31,20 @@ pub struct PluginLoadResult {
 
 fn load_plugins() -> PluginLoadResult {
     let dir = super::DIRECTORY.data_dir().join("plugins");
-    log::trace!("plugins directory: {:?}", dir);
+    LOGGER.trace(&format!("plugins directory: {:?}", dir));
     let mut plugins = Vec::new();
     let mut errors = Vec::new();
     let mut missing = Vec::new();
-    log::trace!("loading plugins");
+    LOGGER.trace("loading plugins");
 
     let files = match std::fs::read_dir(&dir) {
         Ok(files) => {
             let files = files.collect::<Vec<_>>();
-            log::info!("Loaded plugins directory, found {} files", files.len());
+            LOGGER.info(&format!("Loaded plugins directory, found {} files", files.len()));
             files
         }
         Err(e) => {
-            log::error!("Failed to read plugins directory: {}", e);
+            LOGGER.error(&format!("Failed to read plugins directory: {}", e));
             errors.push((dir.to_string_lossy().into(), format!("Failed to read plugins directory: {}", e)));
             return PluginLoadResult { plugins, errors, missing };
         }
@@ -57,49 +61,53 @@ fn load_plugins() -> PluginLoadResult {
             match entry {
                 Ok(entry) => {
                     let path = entry.path();
-                    log::trace!("entry: {:?}", path);
+                    LOGGER.trace(&format!("entry: {:?}", path));
                     // check if file name ends with .dll, .so, or .dylib
                     if let Some(file_name) = path.file_name() {
                         let file_name = file_name.to_string_lossy();
-                        log::trace!("file name: {:?}", file_name);
+                        LOGGER.trace(&format!("file name: {:?}", file_name));
                         if file_name.ends_with(".dll") || file_name.ends_with(".so") || file_name.ends_with(".dylib") {
-                            log::trace!("plugin is a library");
+                            LOGGER.trace("plugin is a library");
 
                             match quick_search_lib::load_library(path.as_path()) {
                                 Ok(library) => {
-                                    log::trace!("library loaded");
-                                    let mut plogon = library.get_searchable()(quick_search_lib::PluginId {
-                                        filename: file_name.into_owned().into(),
-                                    });
-                                    log::trace!("searchable loaded");
+                                    LOGGER.trace("library loaded");
+                                    let scoped_logger = LOGGER.new_scoped(&file_name);
+                                    let mut plogon = library.get_searchable()(
+                                        quick_search_lib::PluginId {
+                                            filename: file_name.into_owned().into(),
+                                        },
+                                        scoped_logger,
+                                    );
+                                    LOGGER.trace("searchable loaded");
                                     let name: &'static str = Searchable_TO::name(&plogon).into();
                                     found_names.insert(name);
-                                    log::trace!("name: {}", name);
+                                    LOGGER.trace(&format!("name: {}", name));
                                     if taken_names.contains(name) {
-                                        log::error!("plugin name {} is already taken", name);
+                                        LOGGER.error(&format!("plugin name {} is already taken", name));
                                         errors.push((path.to_string_lossy().into(), format!("plugin name `{}` is already taken", name)));
                                         continue;
                                     }
                                     let default_plugin_config: quick_search_lib::Config = Searchable_TO::get_config_entries(&plogon);
                                     let plugin_info = config.get_mut_or_default_plugin(name, default_plugin_config.clone());
                                     if !plugin_info.enabled {
-                                        log::info!("plugin {} is disabled", name);
+                                        LOGGER.info(&format!("plugin {} is disabled", name));
                                         continue;
                                     }
                                     taken_names.insert(name);
                                     let colored_name = Searchable_TO::colored_name(&plogon);
-                                    log::trace!("colored_name: {:?}", colored_name);
+                                    LOGGER.trace(&format!("colored_name: {}", colored_name.iter().map(|c| c.char()).collect::<String>()));
                                     let id = Searchable_TO::plugin_id(&plogon);
-                                    log::trace!("id: {:?}", id);
+                                    LOGGER.trace(&format!("id: {:?}", id));
 
                                     // do plugin config checking here
                                     for (key, value) in default_plugin_config.iter() {
                                         // we want to ensure that the plugin config contains the correct keys and that the enum variant of the value is the same, but NOT the contained value
                                         // if plugin_info.plugin_config.get(key.as_str()).is_none() {
-                                        //     log::warn!("plugin {} is missing config key {}", name, key);
+                                        //     LOGGER.warn(&format!("plugin {} is missing config key {}", name, key));
                                         //     plugin_info.plugin_config.insert(key.clone(), value.clone());
                                         // } else if plugin_info.plugin_config.get(key.as_str()).map(|v| v.variant()) != Some(value.variant()) {
-                                        //     log::warn!("plugin {} has incorrect config key {}", name, key);
+                                        //     LOGGER.warn(&format!("plugin {} has incorrect config key {}", name, key));
                                         //     plugin_info.plugin_config.insert(key.clone(), value.clone());
                                         // }
 
@@ -108,32 +116,32 @@ fn load_plugins() -> PluginLoadResult {
                                                 (quick_search_lib::EntryType::String { .. }, quick_search_lib::EntryType::String { .. }) => {}
                                                 (quick_search_lib::EntryType::Bool { .. }, quick_search_lib::EntryType::Bool { .. }) => {}
                                                 (quick_search_lib::EntryType::Int { min, max, .. }, quick_search_lib::EntryType::Int { min: new_min, max: new_max, .. }) => {
-                                                    log::trace!("plugin {} has int config key {}", name, key);
-                                                    log::trace!("old min: {:?}, old max: {:?}", min, max);
+                                                    LOGGER.trace(&format!("plugin {} has int config key {}", name, key));
+                                                    LOGGER.trace(&format!("old min: {:?}, old max: {:?}", min, max));
                                                     *min = *new_min;
                                                     *max = *new_max;
-                                                    log::trace!("new min: {:?}, new max: {:?}", min, max);
+                                                    LOGGER.trace(&format!("new min: {:?}, new max: {:?}", min, max));
                                                 }
                                                 (quick_search_lib::EntryType::Float { min, max, .. }, quick_search_lib::EntryType::Float { min: new_min, max: new_max, .. }) => {
-                                                    log::trace!("plugin {} has float config key {}", name, key);
-                                                    log::trace!("old min: {:?}, old max: {:?}", min, max);
+                                                    LOGGER.trace(&format!("plugin {} has float config key {}", name, key));
+                                                    LOGGER.trace(&format!("old min: {:?}, old max: {:?}", min, max));
                                                     *min = *new_min;
                                                     *max = *new_max;
-                                                    log::trace!("new min: {:?}, new max: {:?}", min, max);
+                                                    LOGGER.trace(&format!("new min: {:?}, new max: {:?}", min, max));
                                                 }
                                                 (quick_search_lib::EntryType::Enum { options, .. }, quick_search_lib::EntryType::Enum { options: new_options, .. }) => {
-                                                    log::trace!("plugin {} has enum config key {}", name, key);
-                                                    log::trace!("old options: {:?}", options);
+                                                    LOGGER.trace(&format!("plugin {} has enum config key {}", name, key));
+                                                    LOGGER.trace(&format!("old options: {:#?}", options));
                                                     *options = new_options.clone();
-                                                    log::trace!("new options: {:?}", options);
+                                                    LOGGER.trace(&format!("new options: {:#?}", options));
                                                 }
                                                 _ => {
-                                                    log::warn!("plugin {} has incorrect config key {}", name, key);
+                                                    LOGGER.warn(&format!("plugin {} has incorrect config key {}", name, key));
                                                     plugin_info.plugin_config.insert(key.clone(), value.clone());
                                                 }
                                             },
                                             None => {
-                                                log::warn!("plugin {} is missing config key {}", name, key);
+                                                LOGGER.warn(&format!("plugin {} is missing config key {}", name, key));
                                                 plugin_info.plugin_config.insert(key.clone(), value.clone());
                                             }
                                         }
@@ -160,27 +168,27 @@ fn load_plugins() -> PluginLoadResult {
                                         priority: plugin_info.priority,
                                         id: id.clone(),
                                         // path,
-                                        _p: plogon,
+                                        _p: Arc::new(plogon),
                                         _l: library,
                                     });
-                                    log::trace!("plugin added to list");
+                                    LOGGER.trace("plugin added to list");
                                 }
                                 Err(e) => {
-                                    log::error!("Failed to load library: {}", e);
+                                    LOGGER.error(&format!("Failed to load library: {}", e));
                                     errors.push((path.to_string_lossy().into(), "Library was compiled for a different version of the ABI".into()));
                                 }
                             }
                         } else {
-                            log::error!("not a library: {:?}", file_name);
+                            LOGGER.error(&format!("not a library: {:?}", file_name));
                             errors.push((path.to_string_lossy().into(), "not a library".into()));
                         }
                     } else {
-                        log::error!("Entry has no file name");
+                        LOGGER.error("Entry has no file name");
                         errors.push((path.to_string_lossy().into(), "Entry has no file name".into()));
                     }
                 }
                 Err(e) => {
-                    log::error!("Failed to read entry: {}", e);
+                    LOGGER.error(&format!("Failed to read entry: {}", e));
                     errors.push((dir.to_string_lossy().into(), "Failed to read file".into()));
                 }
             }
@@ -202,7 +210,7 @@ fn load_plugins() -> PluginLoadResult {
     //     cl.get_mut().plugin_states.remove(&name);
     // }
 
-    log::info!("found and loaded {} plugins", plugins.len());
+    LOGGER.info(&format!("found and loaded {} plugins", plugins.len()));
     PluginLoadResult { plugins, errors, missing }
 }
 
@@ -213,7 +221,7 @@ pub struct Plugin {
     // delay: u32,
     id: quick_search_lib::PluginId,
     // path: std::path::PathBuf,
-    _p: Searchable_TO<'static, quick_search_lib::abi_stable::std_types::RBox<()>>,
+    _p: Arc<Searchable_TO<'static, quick_search_lib::abi_stable::std_types::RBox<()>>>,
     _l: quick_search_lib::SearchLib_Ref,
 }
 
@@ -225,7 +233,7 @@ impl Plugin {
         self._p.execute(result);
     }
     fn search_delayed(&self, query: &str) -> JoinHandle<(Vec<quick_search_lib::SearchResult>, SearchMetadata)> {
-        let p = self._p.clone();
+        let p = Arc::clone(&self._p);
         let query = query.to_string();
 
         let mut metadata = SearchMetadata {
